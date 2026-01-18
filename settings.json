@@ -8,7 +8,7 @@
   "permissions": {
     "allow": ["*"],
     "deny": [],
-    "defaultMode": "ask"
+    "defaultMode": "acceptEdits"
   },
   "hooks": {
     "PreToolUse": [

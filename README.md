@@ -97,7 +97,7 @@ Your API keys in `~/.claude/profiles/*.json` are preserved (installer only copie
 
 ## Notes
 
-- **Permissions:** All profiles use `"defaultMode": "ask"` - you approve every command
+- **Permissions:** All profiles use `"defaultMode": "acceptEdits"` - you approve every command
 - **Safety hooks:** Active on all providers - blocks dangerous operations automatically
 - **Templates vs Active:** `.template` files are blueprints, `.json` files (without .template) are active configs
 - **Profile switching:** Copies the selected profile to `~/.claude/settings.json`, then restart Claude Code
