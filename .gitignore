@@ -1,0 +1,20 @@
+# Secrets and credentials
+*.local.json
+**/secrets/
+**/*.env
+
+# Profile configurations with API keys
+profiles/openrouter.json
+profiles/minimax.json
+profiles/glm.json
+profiles/kimi.json
+
+# Cache and temporary files
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+
+# Generated audio files
+hooks/notification/*.mp3
+hooks/notification/*.wav

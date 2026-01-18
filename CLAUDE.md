@@ -9,7 +9,7 @@
   1. The action could be destructive or risky
   2. A clearly better alternative approach exists
   3. Requirements are unclear even after investigating available context
-- Include a short reasonableness gate line at the top of responses:
+- Include a short Reasonableness Gate line at the top of responses:
   - Gate: NO-GO — reason(s) and what is needed to proceed
   - Gate: GO — assumptions accepted, scope clear, risks acknowledged
 - When challenging, provide:
