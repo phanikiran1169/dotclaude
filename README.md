@@ -4,9 +4,17 @@ Personal Claude Code configuration with multi-provider support, safety hooks, an
 
 ## Quick Start
 
+
+### Install CLI if not present
+```bash
+if ! command -v claude-code &> /dev/null; then
+    curl -fsSL https://cli.claude.ai/install.sh | sh
+fi
+```
+### Setup claude custom configuration
 ```bash
 git clone https://github.com/phanikiran1169/dotclaude.git /tmp/dotclaude
-cd /tmp/dotclaude & chmod a+x install.sh
+cd /tmp/dotclaude && chmod +x install.sh
 ./install.sh
 source ~/.zshrc # or source ~/.bashrc
 ```
