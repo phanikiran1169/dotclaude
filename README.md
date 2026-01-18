@@ -5,9 +5,10 @@ Personal Claude Code configuration with multi-provider support, safety hooks, an
 ## Quick Start
 
 ```bash
-cd ~/Desktop/dotclaude
-./install.sh           # Copies config to ~/.claude, backs up existing settings.json and CLAUDE.md
-source ~/.zshrc        # Load profile switcher functions (or ~/.bashrc)
+git clone https://github.com/phanikiran1169/dotclaude.git /tmp/dotclaude
+cd /tmp/dotclaude & chmod a+x install.sh
+./install.sh
+source ~/.zshrc # or source ~/.bashrc
 ```
 
 First install creates fresh configuration. Subsequent runs backup your existing `settings.json` and `CLAUDE.md` to `.backup` files before updating.
