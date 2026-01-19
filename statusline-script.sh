@@ -6,9 +6,15 @@
 # Read Claude Code JSON input
 input=$(cat)
 
-# Extract essential data from JSON
-project_name=$(basename "$(echo "$input" | jq -r '.workspace.project_dir // .workspace.current_dir // .cwd')")
-model_info=$(echo "$input" | jq -r '.model.display_name // .model.id // "Unknown"')
+# Extract project name from current directory
+project_name=$(basename "$PWD")
+
+# Extract model info from JSON using grep/sed
+model_info=$(echo "$input" | grep -o '"display_name":"[^"]*"' | head -1 | sed 's/"display_name":"\([^"]*\)"/\1/')
+if [ -z "$model_info" ]; then
+    model_info=$(echo "$input" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"\([^"]*\)"/\1/')
+fi
+[ -z "$model_info" ] && model_info="Unknown"
 
 # Git branch information
 if git rev-parse --git-dir > /dev/null 2>&1; then
