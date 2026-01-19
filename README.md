@@ -7,10 +7,13 @@ Personal Claude Code configuration with multi-provider support, safety hooks, an
 
 ### Install CLI if not present
 ```bash
-if ! command -v claude-code &> /dev/null; then
-    curl -fsSL https://cli.claude.ai/install.sh | sh
+if ! command -v claude &> /dev/null; then
+    curl -fsSL https://claude.ai/install.sh | bash
 fi
 ```
+
+### Install [ccusage](https://ccusage.com/guide/getting-started) (if required)
+
 ### Setup claude custom configuration
 ```bash
 git clone https://github.com/phanikiran1169/dotclaude.git /tmp/dotclaude
