@@ -52,10 +52,22 @@ claude-profile   # Show current provider
 
 ### Slash Commands
 ```bash
-/scan   # Generate project CLAUDE.md documentation
-/plan   # Create implementation plans
-/prime  # Load project context for session
+/scan        # Generate project CLAUDE.md documentation
+/plan        # Create implementation plans
+/prime       # Load project context for session
+/create-spec # Throughly discuss to create technical specifications
 ```
+
+### Plugins
+
+The installer automatically installs these recommended plugins:
+```bash
+context7         # Enhanced codebase context and understanding
+code-simplifier  # Identify and simplify complex code
+superpowers      # Extended capabilities and workflows
+```
+
+To modify the plugin list, edit the `PLUGINS` array in `install.sh`.
 
 ## Customization
 
