@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read
-description: Load context for a new agent session by analyzing codebase structure, README, and recent git history. Optional argument: path to specifications and documentation directory.
+description: "Load context for a new agent session by analyzing codebase structure, README, and recent git history. Optional argument: path to specifications and documentation directory."
 ---
 
 # Prime
@@ -18,7 +18,7 @@ IMPORTANT: NO WRITING CODE
 - Provide a concise overview of the project based on the gathered context
 
 ## Context
-- Codebase structure git accessible: !`if git rev-parse --git-dir > /dev/null 2>&1; then git ls-files; else echo "Not a git repository - skipping git ls-files"; fi`
+- Codebase structure: !`if git rev-parse --git-dir > /dev/null 2>&1; then git ls-files; else echo "Not a git repository - skipping git ls-files"; fi`
 - Recent commits (last 10): !`if git rev-parse --git-dir > /dev/null 2>&1; then git log --oneline -n 10; else echo "Not a git repository - no commit history available"; fi`
 - Files changed recently: !`if git rev-parse --git-dir > /dev/null 2>&1; then git diff --name-status HEAD~5..HEAD 2>/dev/null || git diff --name-status $(git rev-list --max-parents=0 HEAD)..HEAD; else echo "Not a git repository - no change history available"; fi`
 - Summary of recent changes: !`if git rev-parse --git-dir > /dev/null 2>&1; then git diff --stat HEAD~5..HEAD 2>/dev/null || git diff --stat $(git rev-list --max-parents=0 HEAD)..HEAD; else echo "Not a git repository - no change summary available"; fi`

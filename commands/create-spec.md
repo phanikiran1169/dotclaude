@@ -1,0 +1,3 @@
+Conduct an in-depth technical interview using the AskUserQuestionTool to create a comprehensive specification. Ask non-obvious questions covering: system requirements, technical architecture, implementation approach, algorithms and data structures, hardware/software integration (if applicable), control systems, sensors/actuators (if applicable), safety and reliability, performance requirements, and critical tradeoffs.
+
+Interview thoroughly until you fully understand the system, then write the specification. Use the provided spec file if given, otherwise create a new file in .claude/spec/ with appropriate naming.
