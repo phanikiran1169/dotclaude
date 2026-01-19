@@ -72,6 +72,25 @@ echo "Installing scripts..."
 cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/" 2>/dev/null || true
 chmod +x "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null || true
 
+# Install plugins
+echo ""
+echo "Installing recommended plugins..."
+PLUGINS=("context7" "code-simplifier" "superpowers")
+
+if command -v claude &> /dev/null; then
+    for plugin in "${PLUGINS[@]}"; do
+        echo "  Installing $plugin..."
+        claude plugin install "$plugin" 2>/dev/null || echo "    (already installed or unavailable)"
+    done
+    echo "Plugins installation complete"
+else
+    echo "Claude CLI not found. Skipping plugin installation."
+    echo "Install plugins manually after installing Claude CLI:"
+    for plugin in "${PLUGINS[@]}"; do
+        echo "  claude plugin install $plugin"
+    done
+fi
+
 # Add profile switcher to shell config
 PROFILE_SOURCE='source ~/.claude/scripts/profile-switcher.sh'
 
