@@ -110,15 +110,6 @@ use-glm  # Second run: activates profile with your key
 
 **Why twice?** First run creates the config file from template. Second run (after adding your key) copies your configured profile to active settings.
 
-## Updates
-
-After modifying files in `~/Desktop/dotclaude`, re-run:
-```bash
-./install.sh  # Backs up settings.json and CLAUDE.md to .backup, then copies updated files
-```
-
-Your API keys in `~/.claude/profiles/*.json` are preserved (installer only copies `.template` files).
-
 ## Notes
 
 - **Permissions:** All profiles use `"defaultMode": "acceptEdits"` - you approve every command
