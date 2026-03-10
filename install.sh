@@ -22,7 +22,7 @@ fi
 
 # Create directories
 echo "Creating directory structure..."
-mkdir -p "$CLAUDE_DIR"/{hooks/pre_tool_use,commands,profiles,scripts}
+mkdir -p "$CLAUDE_DIR"/{hooks/pre_tool_use,commands,profiles,scripts,skills}
 
 # Copy settings
 if [ ! -f "$CLAUDE_DIR/settings.json" ]; then
@@ -72,10 +72,21 @@ echo "Installing scripts..."
 cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/" 2>/dev/null || true
 chmod +x "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null || true
 
-# Install plugins
+# Install skills
+echo "Installing skills..."
+if [ -d "$SCRIPT_DIR/skills" ]; then
+    for skill_dir in "$SCRIPT_DIR/skills"/*/; do
+        skill_name=$(basename "$skill_dir")
+        echo "  Installing skill: $skill_name"
+        mkdir -p "$CLAUDE_DIR/skills/$skill_name"
+        cp -r "$skill_dir"* "$CLAUDE_DIR/skills/$skill_name/"
+    done
+fi
+
+# Install marketplace plugins
 echo ""
 echo "Installing recommended plugins..."
-PLUGINS=("context7" "code-simplifier" "superpowers")
+PLUGINS=("context7" "code-simplifier" "superpowers" "claude-md-management" "skill-creator")
 
 if command -v claude &> /dev/null; then
     for plugin in "${PLUGINS[@]}"; do
@@ -123,6 +134,7 @@ echo "  - Safety hooks: Pre-tool-use validation"
 echo "  - StatusLine: Enhanced status bar"
 echo "  - Commands: /scan, /plan, /prime"
 echo "  - Profiles: claude, openrouter, glm"
+echo "  - Skills: paper-decode"
 echo "  - Profile switcher: Shell functions"
 echo ""
 echo "Restart your terminal or run:"
@@ -141,7 +153,10 @@ echo "  2. Edit and add your API key"
 echo "  3. Switch: use-openrouter"
 echo ""
 echo "Available slash commands:"
-echo "  /scan  - Generate project CLAUDE.md"
-echo "  /plan  - Create implementation plans"
-echo "  /prime - Load project context"
+echo "  /scan          - Generate project CLAUDE.md"
+echo "  /plan          - Create implementation plans"
+echo "  /prime         - Load project context"
+echo ""
+echo "Available skills (auto-trigger from context):"
+echo "  paper-decode   - Decode research papers for implementation"
 echo ""
