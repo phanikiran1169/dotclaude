@@ -24,15 +24,21 @@ fi
 echo "Creating directory structure..."
 mkdir -p "$CLAUDE_DIR"/{hooks/pre_tool_use,commands,profiles,scripts,skills}
 
-# Copy settings
-if [ ! -f "$CLAUDE_DIR/settings.json" ]; then
-    echo "Installing settings.json..."
-    cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
-else
-    echo "settings.json exists, creating backup..."
+# Merge settings (preserves existing keys like enabledPlugins while updating ours)
+echo "Installing settings.json..."
+if [ -f "$CLAUDE_DIR/settings.json" ]; then
     cp "$CLAUDE_DIR/settings.json" "$CLAUDE_DIR/settings.json.backup"
+    if command -v jq &>/dev/null; then
+        # Deep merge: repo settings override existing, but existing-only keys are preserved
+        jq -s '.[0] * .[1]' "$CLAUDE_DIR/settings.json" "$SCRIPT_DIR/settings.json" > "$CLAUDE_DIR/settings.json.tmp"
+        mv "$CLAUDE_DIR/settings.json.tmp" "$CLAUDE_DIR/settings.json"
+        echo "Merged settings.json (old version backed up)"
+    else
+        cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
+        echo "Updated settings.json (old version backed up, install jq for merge support)"
+    fi
+else
     cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
-    echo "Updated settings.json (old version backed up)"
 fi
 
 # Copy CLAUDE.md
