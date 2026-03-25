@@ -76,17 +76,9 @@ else
     cost_segment='$—'
 fi
 
-# Shorten model name for compactness
-short_model="$model_info"
-case "$model_info" in
-    *Opus*)   short_model="Opus" ;;
-    *Sonnet*) short_model="Sonnet" ;;
-    *Haiku*)  short_model="Haiku" ;;
-esac
-
 # Single-line statusline
 printf "[%s] %s | %s | %s | %s | %s | %s" \
-    "$short_model" \
+    "$model_info" \
     "$project_name" \
     "$git_branch" \
     "$context_segment" \
