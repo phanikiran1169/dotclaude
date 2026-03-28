@@ -18,38 +18,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/pre_tool_use/safety_guard.py"
+            "command": "node ~/.claude/hooks/pre_tool_use/block-dangerous-commands.js"
           },
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/pre_tool_use/context_validator.py"
+            "command": "node ~/.claude/hooks/pre_tool_use/protect-secrets.js"
           }
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/pre_tool_use/context_validator.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/pre_tool_use/context_validator.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/pre_tool_use/context_validator.py"
+            "command": "node ~/.claude/hooks/pre_tool_use/protect-secrets.js"
           }
         ]
       }
