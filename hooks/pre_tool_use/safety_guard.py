@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""
-Smart safety filter that blocks truly dangerous operations
-while allowing everything else in dangerous mode
-"""
+# safety_guard.py: Blocks truly dangerous shell operations
+# safety_guard.py: PreToolUse hook for the Bash tool
 
 import json
 import sys
@@ -37,48 +35,41 @@ DANGER_PATTERNS = [
     (r"nc\s+-l.*-e\s*/bin/(?:bash|sh)", "Reverse shell detected"),
 ]
 
-def check_safety(tool_use):
-    """Check if the tool use is safe to execute"""
-    try:
-        if tool_use.get("tool") == "Bash":
-            command = tool_use.get("input", {}).get("command", "")
 
-            # Check against danger patterns
+def check_safety(tool_use):
+    try:
+        if tool_use.get("tool_name") == "Bash":
+            command = tool_use.get("tool_input", {}).get("command", "")
+
             for pattern, message in DANGER_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
                     return {
-                        "action": "block",
-                        "message": f"🛡️ BLOCKED: {message}\nCommand: {command}"
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": f"BLOCKED: {message}"
+                        }
                     }
 
-        # Allow all other commands
-        return {"action": "allow"}
+        return {}
 
-    except Exception as e:
-        # On error, block for safety
-        return {
-            "action": "block",
-            "message": f"Safety check error: {str(e)}"
-        }
+    except Exception:
+        return {}
+
 
 def main():
-    """Main entry point for the hook"""
     try:
-        # Read tool use from stdin
         tool_use = json.load(sys.stdin)
-
-        # Check safety
         result = check_safety(tool_use)
 
-        # Output result
-        print(json.dumps(result))
+        if result:
+            print(json.dumps(result))
+            if "hookSpecificOutput" in result:
+                sys.exit(2)
 
-    except Exception as e:
-        # On any error, block for safety
-        print(json.dumps({
-            "action": "block",
-            "message": f"Hook error: {str(e)}"
-        }))
+    except Exception:
+        sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
-"""
-Context Validator Hook for Claude Code
-Validates tool usage context to ensure appropriate tool selection and usage patterns.
-"""
+# context_validator.py: Validates tool usage context to block access to secrets and system files
+# context_validator.py: PreToolUse hook for Read, Write, Edit, and Bash tools
 
 import json
 import sys
 import os
-from pathlib import Path
+
+
+def make_block(reason):
+    """Return a properly formatted PreToolUse block response."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason
+        }
+    }
+
+
+def make_allow():
+    """Return empty dict to allow (exit code 0 = allow)."""
+    return {}
+
 
 def validate_context(tool_data):
-    """
-    Validate the context of tool usage to ensure appropriate patterns.
-
-    Args:
-        tool_data: Dictionary containing tool invocation information
-
-    Returns:
-        dict: Response with action and optional message
-    """
     tool_name = tool_data.get('tool_name', '')
-    parameters = tool_data.get('parameters', {})
+    parameters = tool_data.get('tool_input', {})
 
     # File operation context validation
     if tool_name in ['Read', 'Write', 'Edit', 'MultiEdit']:
@@ -28,91 +33,75 @@ def validate_context(tool_data):
 
         # Validate file path is absolute
         if file_path and not os.path.isabs(file_path):
-            return {
-                "action": "block",
-                "message": f"File path must be absolute, got: {file_path}"
-            }
+            return make_block(f"File path must be absolute, got: {file_path}")
 
-        # Warn about editing system files
+        # Block access to files that contain secrets
+        secret_patterns = [
+            '.env', '.env.local', '.env.production', '.env.staging',
+            'credentials.json', 'credentials.yaml',
+            'secrets.json', 'secrets.yaml',
+            '.netrc', '.npmrc',
+            'service-account.json',
+        ]
+        filename = os.path.basename(file_path)
+        if filename in secret_patterns:
+            return make_block(f"Blocked access to secrets file: {file_path}")
+
+        # Block files in common secret directories
+        secret_dirs = ['/.ssh/', '/.gnupg/', '/.aws/']
+        if any(d in file_path for d in secret_dirs):
+            return make_block(f"Blocked access to sensitive directory: {file_path}")
+
+        # Block editing system files
         sensitive_paths = ['/etc/', '/usr/bin/', '/usr/sbin/', '/bin/', '/sbin/']
         if any(file_path.startswith(path) for path in sensitive_paths):
-            return {
-                "action": "block",
-                "message": f"Blocked editing system file: {file_path}"
-            }
+            return make_block(f"Blocked access to system file: {file_path}")
 
     # Bash command context validation
     if tool_name == 'Bash':
         command = parameters.get('command', '')
-
-        # Check for potentially problematic command patterns
         problematic_patterns = [
-            'sudo su',
-            'chmod 777',
-            'chown root',
-            'dd if=/dev/zero',
-            'mkfs.',
-            'fdisk',
-            'parted'
+            'sudo su', 'chmod 777', 'chown root',
+            'dd if=/dev/zero', 'mkfs.', 'fdisk', 'parted'
         ]
-
         for pattern in problematic_patterns:
             if pattern in command:
-                return {
-                    "action": "block",
-                    "message": f"Blocked potentially dangerous command pattern: {pattern}"
-                }
+                return make_block(f"Blocked dangerous command pattern: {pattern}")
 
     # Validate Write operations don't overwrite important files
     if tool_name == 'Write':
         file_path = parameters.get('file_path', '')
         important_files = [
-            '/etc/passwd',
-            '/etc/shadow',
-            '/etc/hosts',
-            '/etc/fstab',
-            '~/.ssh/authorized_keys',
-            '~/.bashrc',
-            '~/.zshrc'
+            '/etc/passwd', '/etc/shadow', '/etc/hosts', '/etc/fstab',
+            '~/.ssh/authorized_keys', '~/.bashrc', '~/.zshrc'
         ]
-
         expanded_path = os.path.expanduser(file_path)
         if expanded_path in important_files:
-            return {
-                "action": "block",
-                "message": f"Blocked overwriting important system file: {file_path}"
-            }
+            return make_block(f"Blocked overwriting important file: {file_path}")
 
-    # All validations passed
-    return {"action": "allow"}
+    return make_allow()
+
 
 def main():
-    """Main entry point for the context validator hook."""
     try:
-        # Read input from stdin
         input_data = sys.stdin.read()
         if not input_data.strip():
-            print(json.dumps({"action": "allow"}))
-            return
+            sys.exit(0)
 
-        # Parse JSON input
         tool_data = json.loads(input_data)
-
-        # Validate context
         response = validate_context(tool_data)
 
-        # Output response
-        print(json.dumps(response))
+        if response:
+            print(json.dumps(response))
+            # Exit code 2 = block
+            if "hookSpecificOutput" in response:
+                sys.exit(2)
 
     except json.JSONDecodeError:
-        # Invalid JSON input - allow by default
-        print(json.dumps({"action": "allow"}))
-    except Exception as e:
-        # Any other error - allow by default but log
-        print(json.dumps({
-            "action": "allow",
-            "message": f"Context validator error: {str(e)}"
-        }))
+        sys.exit(0)
+    except Exception:
+        sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
