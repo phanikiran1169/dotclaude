@@ -256,6 +256,38 @@ print('OK')
     fi
 }
 
+# Setup Excalidraw MCP (remote HTTP server, no local install needed)
+setup_excalidraw() {
+    echo -e "${BLUE}Excalidraw MCP Setup${NC}"
+    echo "====================="
+
+    if ! command_exists claude; then
+        echo -e "${YELLOW}Claude Code not found, registering via .mcp.json instead${NC}"
+        # Add to .mcp.json directly
+        if [ -f "$MCP_JSON" ]; then
+            python3 -c "
+import json
+with open('$MCP_JSON') as f:
+    d = json.load(f)
+d.setdefault('mcpServers', {})['excalidraw'] = {
+    'type': 'http',
+    'url': 'https://mcp.excalidraw.com/mcp'
+}
+with open('$MCP_JSON', 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+" 2>/dev/null
+        fi
+        echo -e "${GREEN}Excalidraw added to $MCP_JSON${NC}"
+        return 0
+    fi
+
+    # Use claude mcp add for proper HTTP transport registration
+    claude mcp add --transport http -s user excalidraw https://mcp.excalidraw.com/mcp 2>/dev/null && \
+        echo -e "${GREEN}Excalidraw MCP registered${NC}" || \
+        echo -e "${YELLOW}Excalidraw MCP already registered${NC}"
+}
+
 # Main
 main() {
     check_prerequisites
@@ -291,8 +323,12 @@ main() {
         echo -e "${GRAY}  OPENAI_API_KEY=your-key${NC}"
     fi
 
+    # Setup Excalidraw (remote, no install)
     echo ""
-    echo -e "${GRAY}Restart Claude Code to activate PAL MCP.${NC}"
+    setup_excalidraw
+
+    echo ""
+    echo -e "${GRAY}Restart Claude Code to activate all MCP servers.${NC}"
 }
 
 main "$@"
