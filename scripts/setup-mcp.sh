@@ -256,36 +256,64 @@ print('OK')
     fi
 }
 
-# Setup Excalidraw MCP (remote HTTP server, no local install needed)
-setup_excalidraw() {
-    echo -e "${BLUE}Excalidraw MCP Setup${NC}"
-    echo "====================="
+# Setup Excalidraw MCP (local canvas server + MCP bridge)
+# Uses https://github.com/yctimlin/mcp_excalidraw for full element-level
+# control, screenshots, layout tools, and file export. Requires Node.js.
+# Canvas runs at localhost:3000 — open in browser to see live diagrams.
+EXCALIDRAW_DIR="$MCP_DIR/mcp_excalidraw"
+EXCALIDRAW_PORT=3000
 
-    if ! command_exists claude; then
-        echo -e "${YELLOW}Claude Code not found, registering via .mcp.json instead${NC}"
-        # Add to .mcp.json directly
-        if [ -f "$MCP_JSON" ]; then
-            python3 -c "
-import json
-with open('$MCP_JSON') as f:
-    d = json.load(f)
-d.setdefault('mcpServers', {})['excalidraw'] = {
-    'type': 'http',
-    'url': 'https://mcp.excalidraw.com/mcp'
-}
-with open('$MCP_JSON', 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-" 2>/dev/null
-        fi
-        echo -e "${GREEN}Excalidraw added to $MCP_JSON${NC}"
-        return 0
+setup_excalidraw() {
+    echo -e "${BLUE}Excalidraw MCP Setup (local canvas)${NC}"
+    echo "======================================"
+
+    if ! command_exists node; then
+        echo -e "${RED}Node.js not found. Install it first.${NC}"
+        return 1
     fi
 
-    # Use claude mcp add for proper HTTP transport registration
-    claude mcp add --transport http -s user excalidraw https://mcp.excalidraw.com/mcp 2>/dev/null && \
-        echo -e "${GREEN}Excalidraw MCP registered${NC}" || \
-        echo -e "${YELLOW}Excalidraw MCP already registered${NC}"
+    # Clone or update
+    if [ -d "$EXCALIDRAW_DIR" ]; then
+        echo -e "${GRAY}Excalidraw MCP repo exists, pulling latest...${NC}"
+        git -C "$EXCALIDRAW_DIR" pull --quiet 2>/dev/null || \
+            echo -e "${YELLOW}Pull failed, continuing with existing version${NC}"
+    else
+        echo -e "${GRAY}Cloning Excalidraw MCP server...${NC}"
+        mkdir -p "$MCP_DIR"
+        git clone https://github.com/yctimlin/mcp_excalidraw.git "$EXCALIDRAW_DIR"
+    fi
+
+    # Build
+    echo -e "${GRAY}Installing dependencies and building...${NC}"
+    (cd "$EXCALIDRAW_DIR" && npm ci --quiet 2>/dev/null && npm run build 2>/dev/null) || {
+        echo -e "${RED}Build failed. Check Node.js version and try manually.${NC}"
+        return 1
+    }
+
+    # Verify build output
+    if [ ! -f "$EXCALIDRAW_DIR/dist/index.js" ]; then
+        echo -e "${RED}Build output not found at $EXCALIDRAW_DIR/dist/index.js${NC}"
+        return 1
+    fi
+
+    # Register with Claude Code via claude mcp add (writes to ~/.claude.json)
+    if command_exists claude; then
+        claude mcp add -s user excalidraw-local \
+            -e EXPRESS_SERVER_URL=http://localhost:$EXCALIDRAW_PORT \
+            -- node "$EXCALIDRAW_DIR/dist/index.js" 2>/dev/null && \
+            echo -e "${GREEN}Excalidraw MCP registered with Claude Code${NC}" || \
+            echo -e "${YELLOW}Excalidraw MCP already registered${NC}"
+    else
+        echo -e "${YELLOW}Claude Code CLI not found, skipping registration${NC}"
+    fi
+
+    echo ""
+    echo -e "${GREEN}Excalidraw MCP setup complete${NC}"
+    echo ""
+    echo -e "${GRAY}To use: start the canvas server before Claude Code:${NC}"
+    echo -e "${GRAY}  cd $EXCALIDRAW_DIR && PORT=$EXCALIDRAW_PORT npm run canvas &${NC}"
+    echo -e "${GRAY}  Then open http://localhost:$EXCALIDRAW_PORT in your browser.${NC}"
+    echo -e "${GRAY}  Restart Claude Code to activate the MCP tools.${NC}"
 }
 
 # Main
