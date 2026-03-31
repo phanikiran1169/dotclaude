@@ -54,10 +54,8 @@ fi
 
 # Copy hooks
 echo "Installing safety hooks..."
+cp "$SCRIPT_DIR/hooks/pre_tool_use/"*.js "$CLAUDE_DIR/hooks/pre_tool_use/" 2>/dev/null || true
 cp "$SCRIPT_DIR/hooks/pre_tool_use/"*.py "$CLAUDE_DIR/hooks/pre_tool_use/" 2>/dev/null || true
-
-# Make hooks executable
-chmod +x "$CLAUDE_DIR/hooks/pre_tool_use/"*.py 2>/dev/null || true
 
 # Copy statusline script
 echo "Installing statusline script..."
@@ -89,12 +87,34 @@ if [ -d "$SCRIPT_DIR/skills" ]; then
     done
 fi
 
+# Install Codex CLI
+echo ""
+if command -v codex &> /dev/null; then
+    echo "Codex CLI already installed ($(codex --version 2>/dev/null || echo 'unknown'))"
+else
+    echo "Installing Codex CLI..."
+    if command -v npm &> /dev/null; then
+        npm install -g @openai/codex 2>/dev/null || {
+            echo "  Global install failed (permissions). Trying with npx fallback..."
+            echo "  Run manually: sudo npm install -g @openai/codex"
+        }
+    else
+        echo "  npm not found. Install Node.js first, then: npm install -g @openai/codex"
+    fi
+fi
+
 # Install marketplace plugins
 echo ""
 echo "Installing recommended plugins..."
 PLUGINS=("context7" "code-simplifier" "superpowers" "claude-md-management" "skill-creator")
 
 if command -v claude &> /dev/null; then
+    # Add Codex marketplace and plugin
+    echo "  Adding Codex marketplace..."
+    claude plugin marketplace add openai/codex-plugin-cc 2>/dev/null || echo "    (already added or unavailable)"
+    echo "  Installing codex plugin..."
+    claude plugin install "codex@openai-codex" 2>/dev/null || echo "    (already installed or unavailable)"
+
     for plugin in "${PLUGINS[@]}"; do
         echo "  Installing $plugin..."
         claude plugin install "$plugin" 2>/dev/null || echo "    (already installed or unavailable)"
@@ -103,6 +123,8 @@ if command -v claude &> /dev/null; then
 else
     echo "Claude CLI not found. Skipping plugin installation."
     echo "Install plugins manually after installing Claude CLI:"
+    echo "  claude plugin marketplace add openai/codex-plugin-cc"
+    echo "  claude plugin install codex@openai-codex"
     for plugin in "${PLUGINS[@]}"; do
         echo "  claude plugin install $plugin"
     done
@@ -136,11 +158,12 @@ echo ""
 echo "Installed components:"
 echo "  - CLAUDE.md: Development guidelines"
 echo "  - settings.json: Core configuration"
-echo "  - Safety hooks: Pre-tool-use validation"
+echo "  - Safety hooks: Pre-tool-use validation (JS)"
 echo "  - StatusLine: Enhanced status bar"
 echo "  - Commands: /scan, /plan, /prime"
 echo "  - Profiles: claude, openrouter, glm"
 echo "  - Skills: decode-ai-paper, humanizer"
+echo "  - Plugins: context7, code-simplifier, superpowers, codex"
 echo "  - Profile switcher: Shell functions"
 echo ""
 echo "Restart your terminal or run:"
