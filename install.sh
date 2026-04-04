@@ -12,9 +12,14 @@ echo "Installing Claude Code Configuration..."
 echo "========================================"
 echo ""
 
-# Detect shell config file
+# Detect shell config file (prefer the active shell, not just what exists)
 SHELL_CONFIG=""
-if [ -f "$HOME/.zshrc" ]; then
+CURRENT_SHELL="$(basename "${SHELL:-/bin/bash}")"
+if [ "$CURRENT_SHELL" = "zsh" ] && [ -f "$HOME/.zshrc" ]; then
+    SHELL_CONFIG="$HOME/.zshrc"
+elif [ "$CURRENT_SHELL" = "bash" ] && [ -f "$HOME/.bashrc" ]; then
+    SHELL_CONFIG="$HOME/.bashrc"
+elif [ -f "$HOME/.zshrc" ]; then
     SHELL_CONFIG="$HOME/.zshrc"
 elif [ -f "$HOME/.bashrc" ]; then
     SHELL_CONFIG="$HOME/.bashrc"
@@ -87,6 +92,12 @@ if [ -d "$SCRIPT_DIR/skills" ]; then
     done
 fi
 
+# Ensure npm global bin is on PATH
+NPM_GLOBAL_BIN="$(npm config get prefix 2>/dev/null)/bin"
+if [ -n "$NPM_GLOBAL_BIN" ] && [[ ":$PATH:" != *":$NPM_GLOBAL_BIN:"* ]]; then
+    export PATH="$NPM_GLOBAL_BIN:$PATH"
+fi
+
 # Install Codex CLI
 echo ""
 if command -v codex &> /dev/null; then
@@ -98,8 +109,24 @@ else
             echo "  Global install failed (permissions). Trying with npx fallback..."
             echo "  Run manually: sudo npm install -g @openai/codex"
         }
+        # Verify it's now findable
+        if ! command -v codex &> /dev/null; then
+            echo "  WARNING: codex installed but not on PATH."
+            echo "  npm global bin: $NPM_GLOBAL_BIN"
+        fi
     else
         echo "  npm not found. Install Node.js first, then: npm install -g @openai/codex"
+    fi
+fi
+
+# Persist npm global bin in shell config if missing
+if [ -n "$NPM_GLOBAL_BIN" ] && [ -d "$NPM_GLOBAL_BIN" ]; then
+    PATH_EXPORT="export PATH=\"$NPM_GLOBAL_BIN:\$PATH\""
+    if [ -n "$SHELL_CONFIG" ] && ! grep -qF "$NPM_GLOBAL_BIN" "$SHELL_CONFIG" 2>/dev/null; then
+        echo "" >> "$SHELL_CONFIG"
+        echo "# npm global bin (added by Claude Code installer)" >> "$SHELL_CONFIG"
+        echo "$PATH_EXPORT" >> "$SHELL_CONFIG"
+        echo "  Added $NPM_GLOBAL_BIN to $SHELL_CONFIG"
     fi
 fi
 
