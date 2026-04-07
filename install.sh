@@ -20,9 +20,11 @@ else
     C_GREEN=''  C_YELLOW=''  C_RED=''  C_RESET=''
 fi
 
+FIXES=()
+
 mark_ok()      { INSTALLED+=("$1"); }
 mark_skipped() { SKIPPED+=("$1: $2"); }
-mark_failed()  { FAILED+=("$1: $2"); }
+mark_failed()  { FAILED+=("$1: $2"); FIXES+=("${3:-}"); }
 
 echo "Installing Claude Code Configuration..."
 echo "========================================"
@@ -56,7 +58,7 @@ if [ -f "$CLAUDE_DIR/settings.json" ]; then
             mark_ok "settings.json (merged)"
         else
             rm -f "$CLAUDE_DIR/settings.json.tmp"
-            mark_failed "settings.json" "jq merge failed"
+            mark_failed "settings.json" "jq merge failed" "brew install jq && re-run install.sh"
         fi
     else
         cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
@@ -89,7 +91,7 @@ cp "$SCRIPT_DIR/hooks/pre_tool_use/"*.py "$CLAUDE_DIR/hooks/pre_tool_use/" 2>/de
 if [ "$HOOKS_COPIED" -eq 1 ]; then
     mark_ok "Safety hooks"
 else
-    mark_failed "Safety hooks" "no hook files found in repo"
+    mark_failed "Safety hooks" "no hook files found in repo" "check that hooks/pre_tool_use/ has .js or .py files"
 fi
 
 # Copy statusline script
@@ -99,7 +101,7 @@ if [ -f "$SCRIPT_DIR/statusline-script.sh" ]; then
     chmod +x "$CLAUDE_DIR/statusline-script.sh"
     mark_ok "Statusline script"
 else
-    mark_failed "Statusline script" "source file not found"
+    mark_failed "Statusline script" "source file not found" "ensure statusline-script.sh exists in the repo root"
 fi
 
 # Copy commands
@@ -144,7 +146,7 @@ if [ -d "$SCRIPT_DIR/skills" ]; then
         if cp -r "$skill_dir"* "$CLAUDE_DIR/skills/$skill_name/"; then
             SKILLS_COUNT=$((SKILLS_COUNT + 1))
         else
-            mark_failed "Skill: $skill_name" "copy failed"
+            mark_failed "Skill: $skill_name" "copy failed" "check permissions on ~/.claude/skills/"
         fi
     done
 fi
@@ -173,16 +175,16 @@ else
             if command -v codex &> /dev/null; then
                 mark_ok "Codex CLI"
             else
-                mark_failed "Codex CLI" "installed but not on PATH (npm global bin: $NPM_GLOBAL_BIN)"
+                mark_failed "Codex CLI" "installed but not on PATH" "export PATH=\"$NPM_GLOBAL_BIN:\$PATH\" and restart terminal"
             fi
         else
             echo "  Global install failed (permissions)."
             echo "  Run manually: sudo npm install -g @openai/codex"
-            mark_failed "Codex CLI" "npm install failed (try: sudo npm install -g @openai/codex)"
+            mark_failed "Codex CLI" "npm install failed (permissions)" "sudo npm install -g @openai/codex"
         fi
     else
         echo "  npm not found. Install Node.js first, then: npm install -g @openai/codex"
-        mark_failed "Codex CLI" "npm/node not installed"
+        mark_failed "Codex CLI" "npm/node not installed" "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && nvm install --lts"
     fi
 fi
 
@@ -228,7 +230,7 @@ if command -v claude &> /dev/null; then
     done
 else
     echo "  Claude CLI not found. Skipping plugin installation."
-    mark_failed "Plugins (all)" "claude CLI not installed"
+    mark_failed "Plugins (all)" "claude CLI not installed" "npm install -g @anthropic-ai/claude-code && re-run install.sh"
     echo "  Install plugins manually after installing Claude CLI:"
     echo "    claude plugin marketplace add openai/codex-plugin-cc"
     echo "    claude plugin install codex@openai-codex"
@@ -285,8 +287,11 @@ fi
 if [ ${#FAILED[@]} -gt 0 ]; then
     echo ""
     echo -e "  ${C_RED}FAILED (${#FAILED[@]}):${C_RESET}"
-    for item in "${FAILED[@]}"; do
-        echo -e "    ${C_RED}[!!]${C_RESET} $item"
+    for i in "${!FAILED[@]}"; do
+        echo -e "    ${C_RED}[!!]${C_RESET} ${FAILED[$i]}"
+        if [ -n "${FIXES[$i]:-}" ]; then
+            echo -e "         Fix: ${FIXES[$i]}"
+        fi
     done
 fi
 
