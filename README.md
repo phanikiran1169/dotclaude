@@ -69,6 +69,43 @@ superpowers      # Extended capabilities and workflows
 
 To modify the plugin list, edit the `PLUGINS` array in `install.sh`.
 
+### Academic writing setup (opt-in)
+
+Skipped by default — review requirements first, then enable explicitly:
+
+```bash
+./install.sh --academic
+# or
+INSTALL_ACADEMIC=1 ./install.sh
+```
+
+Two marketplace plugins for thesis/paper authoring are installed when enabled
+(see `ACADEMIC_MARKETPLACES` in `install.sh`):
+
+```
+claude-scholar              # Citation/LaTeX/arXiv tooling (check-refs, verify-math, arxiv-prep, ...)
+academic-research-skills    # ARS: research → write → review pipeline (12-agent paper, deep-research, ...)
+```
+
+System dependencies installed by the installer (cross-platform: macOS via brew,
+Ubuntu via apt):
+
+- `pandoc`  — used by ARS format conversion (DOCX/Markdown)
+- `pipx`    — isolated Python CLI installer
+- `arxiv-latex-cleaner` (via pipx) — used by `claude-scholar:arxiv-prep`
+
+LaTeX stack (`lualatex`, `pdflatex`, `bibtex`, `biber`, `latexmk`) is verified
+but **not** auto-installed (large download, often already present). The
+installer prints the platform-specific install command if any tool is missing.
+
+Project-level Python deps (e.g. `sympy` for `claude-scholar:verify-math`) belong
+in the project's own conda env / `environment.yml`, not in dotclaude.
+
+Optional env var for ARS cross-model verification:
+```bash
+export ARS_CROSS_MODEL=1
+```
+
 ## Customization
 
 ### Change Model Mappings

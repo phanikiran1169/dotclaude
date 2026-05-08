@@ -8,6 +8,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="$HOME/.claude"
 
+# install.sh: Optional features (off by default — high failure risk on new machines)
+INSTALL_ACADEMIC="${INSTALL_ACADEMIC:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        --academic) INSTALL_ACADEMIC=1 ;;
+        --help|-h)
+            echo "Usage: $0 [--academic]"
+            echo "  --academic   Install claude-scholar + ARS plugins and their system deps"
+            echo "               (pandoc, pipx, arxiv-latex-cleaner). Skipped by default."
+            exit 0
+            ;;
+    esac
+done
+
 # install.sh: Track installation results for final summary
 INSTALLED=()
 SKIPPED=()
@@ -29,6 +43,80 @@ mark_failed()  { FAILED+=("$1: $2"); FIXES+=("${3:-}"); }
 echo "Installing Claude Code Configuration..."
 echo "========================================"
 echo ""
+
+# Detect platform (macos | ubuntu | unknown)
+detect_platform() {
+    case "$(uname -s)" in
+        Darwin) echo "macos" ;;
+        Linux)
+            if [ -f /etc/os-release ]; then
+                . /etc/os-release
+                case "$ID" in
+                    ubuntu|debian) echo "ubuntu" ;;
+                    *) echo "unknown" ;;
+                esac
+            else
+                echo "unknown"
+            fi
+            ;;
+        *) echo "unknown" ;;
+    esac
+}
+PLATFORM="$(detect_platform)"
+
+# install.sh: dpkg strict installed-status check (rejects half-configured packages)
+dpkg_is_installed() {
+    [ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" = "install ok installed" ]
+}
+
+# install.sh: track whether `apt-get update` has run this session
+APT_UPDATED=0
+ensure_apt_updated() {
+    if [ "$APT_UPDATED" = "0" ]; then
+        # only mark updated on actual success — failures should allow retry on next call
+        sudo -n apt-get update >/dev/null 2>&1 && APT_UPDATED=1 || true
+    fi
+}
+
+# install.sh: cross-platform package install (macos via brew, ubuntu via apt)
+pkg_install() {
+    local pkg="$1"
+    case "$PLATFORM" in
+        macos)
+            if brew list "$pkg" &>/dev/null; then
+                mark_ok "pkg: $pkg (already installed)"
+                return 0
+            fi
+            local err
+            if err="$(brew install "$pkg" 2>&1 >/dev/null)"; then
+                mark_ok "pkg: $pkg"
+            else
+                mark_failed "pkg: $pkg" "brew install failed: $(echo "$err" | tail -1)" "brew install $pkg"
+            fi
+            ;;
+        ubuntu)
+            if dpkg_is_installed "$pkg"; then
+                mark_ok "pkg: $pkg (already installed)"
+                return 0
+            fi
+            # require non-interactive sudo so headless installs don't hang
+            if ! sudo -n true 2>/dev/null; then
+                mark_failed "pkg: $pkg" "passwordless sudo unavailable" "run: sudo apt-get install -y $pkg"
+                return 0
+            fi
+            ensure_apt_updated
+            local err
+            if err="$(sudo -n apt-get install -y "$pkg" 2>&1 >/dev/null)"; then
+                mark_ok "pkg: $pkg"
+            else
+                mark_failed "pkg: $pkg" "apt install failed: $(echo "$err" | tail -1)" "sudo apt-get install -y $pkg"
+            fi
+            ;;
+        *)
+            mark_skipped "pkg: $pkg" "unsupported platform: $PLATFORM"
+            ;;
+    esac
+}
 
 # Detect shell config file (prefer the active shell, not just what exists)
 SHELL_CONFIG=""
@@ -199,10 +287,64 @@ if [ -n "$NPM_GLOBAL_BIN" ] && [ -d "$NPM_GLOBAL_BIN" ]; then
     fi
 fi
 
+# Install academic writing system deps (claude-scholar + ARS plugins)
+# install.sh: opt-in only — these installs (brew/apt/pipx + plugin marketplaces)
+# have high failure rates on fresh machines (network, sudo, PATH).
+if [ "$INSTALL_ACADEMIC" = "1" ]; then
+    echo ""
+    echo "Installing academic writing system deps..."
+    pkg_install pandoc
+    pkg_install pipx
+
+    if command -v pipx &>/dev/null; then
+        pipx ensurepath >/dev/null 2>&1 || true
+        # exact-name check (machine-readable: lists installed venv names, one per line)
+        if pipx list --short 2>/dev/null | awk '{print $1}' | grep -qx "arxiv-latex-cleaner"; then
+            mark_ok "pipx: arxiv-latex-cleaner (already installed)"
+        else
+            PIPX_ERR="$(pipx install arxiv-latex-cleaner 2>&1 >/dev/null)" \
+                && mark_ok "pipx: arxiv-latex-cleaner" \
+                || mark_failed "pipx: arxiv-latex-cleaner" "install failed: $(echo "$PIPX_ERR" | tail -1)" "pipx install arxiv-latex-cleaner"
+            unset PIPX_ERR
+        fi
+    else
+        mark_skipped "pipx: arxiv-latex-cleaner" "pipx not available"
+    fi
+
+    # LaTeX stack — print-only (large install, often already present via tlmgr/MacTeX)
+    LATEX_MISSING=()
+    for cmd in lualatex pdflatex bibtex biber latexmk; do
+        command -v "$cmd" >/dev/null || LATEX_MISSING+=("$cmd")
+    done
+    if [ ${#LATEX_MISSING[@]} -gt 0 ]; then
+        case "$PLATFORM" in
+            ubuntu)
+                mark_skipped "LaTeX stack" "missing: ${LATEX_MISSING[*]} — run: sudo apt-get install -y texlive-luatex texlive-bibtex-extra biber latexmk"
+                ;;
+            macos)
+                mark_skipped "LaTeX stack" "missing: ${LATEX_MISSING[*]} — install MacTeX from https://www.tug.org/mactex/ or: brew install --cask mactex-no-gui"
+                ;;
+            *)
+                mark_skipped "LaTeX stack" "missing: ${LATEX_MISSING[*]}"
+                ;;
+        esac
+    else
+        mark_ok "LaTeX stack (lualatex, biber, latexmk)"
+    fi
+else
+    mark_skipped "Academic writing setup" "opt-in: re-run with ./install.sh --academic"
+fi
+
 # Install marketplace plugins
 echo ""
 echo "Installing recommended plugins..."
 PLUGINS=("context7" "code-simplifier" "superpowers" "claude-md-management" "skill-creator")
+
+# Marketplace plugins (academic writing): "marketplace_repo:plugin@marketplace_name"
+ACADEMIC_MARKETPLACES=(
+    "yy/claude-scholar:claude-scholar@claude-scholar"
+    "Imbad0202/academic-research-skills:academic-research-skills@academic-research-skills"
+)
 
 if command -v claude &> /dev/null; then
     # Add Codex marketplace and plugin
@@ -228,6 +370,44 @@ if command -v claude &> /dev/null; then
             mark_skipped "Plugin: $plugin" "already installed or unavailable"
         fi
     done
+
+    # Academic writing marketplaces (claude-scholar + ARS) — opt-in
+    if [ "$INSTALL_ACADEMIC" = "1" ]; then
+        # Cache existing marketplace + plugin lists so we can distinguish
+        # "already there" (skip) from "operation failed" (real failure).
+        EXISTING_MARKETS="$(claude plugin marketplace list 2>/dev/null || true)"
+        EXISTING_PLUGINS="$(claude plugin list 2>/dev/null || true)"
+
+        for entry in "${ACADEMIC_MARKETPLACES[@]}"; do
+            market="${entry%%:*}"
+            pkg="${entry##*:}"
+            market_short="${market##*/}"
+            plugin_name="${pkg%@*}"
+
+            echo "  Adding marketplace $market..."
+            # exact whole-word match, anchored to non-name boundaries — avoids
+            # false-matching extensions like `claude-scholar-extra`
+            if echo "$EXISTING_MARKETS" | awk -v m="$market_short" '$0 ~ ("(^|[[:space:]/])"m"([[:space:]]|$)") {f=1} END {exit !f}'; then
+                mark_ok "Marketplace: $market (already added)"
+            else
+                MARKET_ERR="$(claude plugin marketplace add "$market" 2>&1 >/dev/null)" \
+                    && mark_ok "Marketplace: $market" \
+                    || mark_failed "Marketplace: $market" "add failed: $(echo "$MARKET_ERR" | tail -1)" "claude plugin marketplace add $market"
+                unset MARKET_ERR
+            fi
+
+            echo "  Installing $pkg..."
+            if echo "$EXISTING_PLUGINS" | awk -v p="$plugin_name" '$0 ~ ("(^|[[:space:]/@])"p"([[:space:]@]|$)") {f=1} END {exit !f}'; then
+                mark_ok "Plugin: $pkg (already installed)"
+            else
+                PLUGIN_ERR="$(claude plugin install "$pkg" 2>&1 >/dev/null)" \
+                    && mark_ok "Plugin: $pkg" \
+                    || mark_failed "Plugin: $pkg" "install failed: $(echo "$PLUGIN_ERR" | tail -1)" "claude plugin install $pkg"
+                unset PLUGIN_ERR
+            fi
+        done
+        unset EXISTING_MARKETS EXISTING_PLUGINS
+    fi
 else
     echo "  Claude CLI not found. Skipping plugin installation."
     mark_failed "Plugins (all)" "claude CLI not installed" "npm install -g @anthropic-ai/claude-code && re-run install.sh"
@@ -237,6 +417,13 @@ else
     for plugin in "${PLUGINS[@]}"; do
         echo "    claude plugin install $plugin"
     done
+    if [ "$INSTALL_ACADEMIC" = "1" ]; then
+        for entry in "${ACADEMIC_MARKETPLACES[@]}"; do
+            market="${entry%%:*}"; pkg="${entry##*:}"
+            echo "    claude plugin marketplace add $market"
+            echo "    claude plugin install $pkg"
+        done
+    fi
 fi
 
 # Add profile switcher to shell config
