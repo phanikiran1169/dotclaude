@@ -22,18 +22,26 @@ cd /tmp/dotclaude && chmod +x install.sh
 source ~/.zshrc # or source ~/.bashrc
 ```
 
-First install creates fresh configuration. Subsequent runs backup your existing `settings.json` and `CLAUDE.md` to `.backup` files before updating.
+First install creates fresh configuration. Later runs keep a timestamped copy of anything they
+replace in `~/.claude/backups/`, alongside the single `.backup` slot. The `.backup` slot holds only
+the most recent version, so `backups/` is the reliable recovery path.
+
+`jq` is required. Without it the installer leaves an existing `settings.json` untouched rather than
+overwriting it, because a plain copy would drop your permission allowlist, model and plugin
+settings.
 
 ## Structure
 
 ```
 dotclaude/
 ├── CLAUDE.md              # Development guidelines and behavior rules
-├── settings.json          # Base configuration (permissions: ask, hooks, statusline)
+├── settings.json          # Base configuration (permissions, hooks, statusline)
 ├── install.sh             # Deployment script to ~/.claude (backs up existing files)
 ├── statusline-script.sh   # Status bar showing project, branch, model, time, user
-├── hooks/pre_tool_use/    # Safety guards (blocks rm -rf /, fork bombs, credential leaks)
-├── commands/              # Slash commands (/scan, /plan, /prime)
+├── hooks/pre_tool_use/    # Blocks destructive commands and credential leaks
+├── hooks/post_tool_use/   # Reminds you to state a run's setup before quoting its numbers
+├── skills/                # Situational guidance, loaded when the description matches
+├── commands/              # Slash commands (/scan, /prime, /create-spec)
 ├── profiles/              # Multi-provider configurations (claude, openrouter, glm)
 │   ├── claude.json        # Anthropic Claude (default)
 │   ├── *.template         # Templates for providers requiring API keys
@@ -53,19 +61,24 @@ claude-profile   # Show current provider
 ### Slash Commands
 ```bash
 /scan        # Generate project CLAUDE.md documentation
-/plan        # Create implementation plans
 /prime       # Load project context for session
-/create-spec # Throughly discuss to create technical specifications
+/create-spec # Discuss requirements, then write a technical specification
 ```
 
 ### Plugins
 
 The installer automatically installs these recommended plugins:
 ```bash
-context7         # Enhanced codebase context and understanding
-code-simplifier  # Identify and simplify complex code
-superpowers      # Extended capabilities and workflows
+context7            # Enhanced codebase context and understanding
+code-simplifier     # Identify and simplify complex code
+superpowers         # Extended capabilities and workflows
+claude-md-management # CLAUDE.md tooling
+skill-creator       # Scaffolding for new skills
+codex               # Codex CLI integration (from the openai-codex marketplace)
 ```
+
+These are installed unconditionally and need network access. Offline they fail without stopping the
+install.
 
 To modify the plugin list, edit the `PLUGINS` array in `install.sh`.
 
@@ -120,7 +133,17 @@ Edit `profiles/*.json.template`:
 Edit `CLAUDE.md` - controls how Claude behaves (code style, search tools, workflow)
 
 ### Adjust Safety Hooks
-Edit `hooks/pre_tool_use/*.py` - add/remove dangerous command patterns
+Edit `hooks/pre_tool_use/block-dangerous-commands.js` to add or remove patterns. Add the command to
+`hooks/pre_tool_use/cases.js` first, then run the checks:
+
+```bash
+node hooks/pre_tool_use/test-patterns.js      # every case must block or pass as listed
+node hooks/pre_tool_use/test-coverage.js      # reports rules no case reaches
+node hooks/post_tool_use/test-eval-provenance.js
+```
+
+A pattern that blocks ordinary work is worse than no pattern, because the hook ends up switched
+off. `cases.js` holds both lists for that reason.
 
 ### Add More Profiles
 1. Copy existing template: `cp profiles/openrouter.json.template profiles/newprovider.json.template`
@@ -149,7 +172,8 @@ use-glm  # Second run: activates profile with your key
 
 ## Notes
 
-- **Permissions:** All profiles use `"defaultMode": "acceptEdits"` - you approve every command
+- **Permissions:** All profiles use `"defaultMode": "acceptEdits"`, which auto-accepts file edits.
+  Destructive shell commands are refused by the hooks rather than by the permission prompt.
 - **Safety hooks:** Active on all providers - blocks dangerous operations automatically
 - **Templates vs Active:** `.template` files are blueprints, `.json` files (without .template) are active configs
 - **Profile switching:** Copies the selected profile to `~/.claude/settings.json`, then restart Claude Code

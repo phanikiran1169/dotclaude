@@ -133,14 +133,40 @@ fi
 
 # Create directories
 echo "Creating directory structure..."
-mkdir -p "$CLAUDE_DIR"/{hooks/pre_tool_use,commands,profiles,scripts,skills}
+mkdir -p "$CLAUDE_DIR"/{commands,profiles,scripts,skills}
 
 # Merge settings (preserves existing keys like enabledPlugins while updating ours)
 echo "Installing settings.json..."
+# Keeps a timestamped copy under backups/ alongside the single .backup slot, so running the
+# installer twice does not leave the original unrecoverable.
+BACKUP_DIR="$CLAUDE_DIR/backups"
+archive_backup() {
+    local src="$1"
+    [ -f "$src" ] || return 0
+    mkdir -p "$BACKUP_DIR"
+    cp "$src" "$BACKUP_DIR/$(basename "$src").$(date +%Y%m%d-%H%M%S)"
+}
+
 if [ -f "$CLAUDE_DIR/settings.json" ]; then
+    archive_backup "$CLAUDE_DIR/settings.json"
     cp "$CLAUDE_DIR/settings.json" "$CLAUDE_DIR/settings.json.backup"
     if command -v jq &>/dev/null; then
-        if jq -s '.[0] * .[1]' "$CLAUDE_DIR/settings.json" "$SCRIPT_DIR/settings.json" > "$CLAUDE_DIR/settings.json.tmp"; then
+        # `*` recurses into objects but replaces arrays, so permissions.allow and every
+        # hooks.<event> array would be overwritten. Those are unioned instead: approvals granted
+        # over time and hooks the user added themselves both survive an install. Every other key
+        # takes the repo's value.
+        if jq -s '
+              .[0] as $live | .[1] as $repo
+            | ($live * $repo)
+            | .permissions.allow = (($live.permissions.allow // []) + ($repo.permissions.allow // []) | unique)
+            | .permissions.deny  = (($live.permissions.deny  // []) + ($repo.permissions.deny  // []) | unique)
+            | .hooks = (
+                (($live.hooks // {}) | keys) + (($repo.hooks // {}) | keys) | unique
+                | map({ key: ., value: (
+                    (($live.hooks[.] // []) + ($repo.hooks[.] // [])) | unique_by(tojson)
+                  )})
+                | from_entries)
+          ' "$CLAUDE_DIR/settings.json" "$SCRIPT_DIR/settings.json" > "$CLAUDE_DIR/settings.json.tmp"; then
             mv "$CLAUDE_DIR/settings.json.tmp" "$CLAUDE_DIR/settings.json"
             echo "  Merged settings.json (old version backed up)"
             mark_ok "settings.json (merged)"
@@ -149,9 +175,11 @@ if [ -f "$CLAUDE_DIR/settings.json" ]; then
             mark_failed "settings.json" "jq merge failed" "brew install jq && re-run install.sh"
         fi
     else
-        cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
-        echo "  Updated settings.json (old version backed up, install jq for merge support)"
-        mark_ok "settings.json (overwritten, no jq)"
+        # Overwriting would drop the permission allowlist, model and plugin settings that live only
+        # in the installed file. Losing those is worse than not installing, so the existing file is
+        # left alone.
+        mark_failed "settings.json" "jq not found, existing file left unchanged" \
+                    "install jq (apt-get install -y jq / brew install jq) and re-run install.sh"
     fi
 else
     cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
@@ -165,26 +193,58 @@ if [ ! -f "$CLAUDE_DIR/CLAUDE.md" ]; then
     mark_ok "CLAUDE.md"
 else
     echo "CLAUDE.md exists, creating backup..."
+    archive_backup "$CLAUDE_DIR/CLAUDE.md"
     cp "$CLAUDE_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.backup"
     cp "$SCRIPT_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
     echo "  Updated CLAUDE.md (old version backed up)"
     mark_ok "CLAUDE.md (updated)"
 fi
 
-# Copy hooks
+# Copy hooks. Every hooks/<event>/ directory in the repo is installed, so adding a new event
+# directory does not require editing this script.
 echo "Installing safety hooks..."
 HOOKS_COPIED=0
-cp "$SCRIPT_DIR/hooks/pre_tool_use/"*.js "$CLAUDE_DIR/hooks/pre_tool_use/" 2>/dev/null && HOOKS_COPIED=1
-cp "$SCRIPT_DIR/hooks/pre_tool_use/"*.py "$CLAUDE_DIR/hooks/pre_tool_use/" 2>/dev/null && HOOKS_COPIED=1
+for hook_dir in "$SCRIPT_DIR/hooks"/*/; do
+    [ -d "$hook_dir" ] || continue
+    event_name=$(basename "$hook_dir")
+    mkdir -p "$CLAUDE_DIR/hooks/$event_name"
+    # test-*.js and cases.js are the repo's own checks and corpus, not hooks.
+    for hook_file in "$hook_dir"*.js "$hook_dir"*.py; do
+        [ -f "$hook_file" ] || continue
+        case "$(basename "$hook_file")" in test-*|cases.js) continue ;; esac
+        cp "$hook_file" "$CLAUDE_DIR/hooks/$event_name/" && HOOKS_COPIED=1
+    done
+done
 if [ "$HOOKS_COPIED" -eq 1 ]; then
     mark_ok "Safety hooks"
 else
-    mark_failed "Safety hooks" "no hook files found in repo" "check that hooks/pre_tool_use/ has .js or .py files"
+    mark_failed "Safety hooks" "no hook files found in repo" "check that hooks/*/ has .js or .py files"
+fi
+
+# Claude Code finds hooks only through settings.json, so a copied file at a path settings.json does
+# not name is inert, and a path settings.json names that does not exist fails silently at runtime.
+# Both are checked here rather than assumed from a successful copy.
+if command -v jq &>/dev/null; then
+    MISSING_HOOKS=""
+    while read -r hook_path; do
+        [ -n "$hook_path" ] || continue
+        resolved="${hook_path/#\~\/.claude\//$CLAUDE_DIR/}"
+        resolved="${resolved/#\$HOME\/.claude\//$CLAUDE_DIR/}"
+        [ -f "$resolved" ] || MISSING_HOOKS="$MISSING_HOOKS $hook_path"
+    done < <(jq -r '(.hooks // {}) | to_entries[].value[]?.hooks[]?.command // empty' "$CLAUDE_DIR/settings.json" 2>/dev/null \
+             | grep -oE '(~|\$HOME)/\.claude/[^ "]+' || true)
+    if [ -n "$MISSING_HOOKS" ]; then
+        mark_failed "Hook paths" "settings.json points at missing files:$MISSING_HOOKS" \
+                    "check that hooks/<event>/ in the repo matches the paths in settings.json"
+    else
+        mark_ok "Hook paths resolve"
+    fi
 fi
 
 # Copy statusline script
 echo "Installing statusline script..."
 if [ -f "$SCRIPT_DIR/statusline-script.sh" ]; then
+    archive_backup "$CLAUDE_DIR/statusline-script.sh"
     cp "$SCRIPT_DIR/statusline-script.sh" "$CLAUDE_DIR/statusline-script.sh"
     chmod +x "$CLAUDE_DIR/statusline-script.sh"
     mark_ok "Statusline script"
@@ -194,9 +254,12 @@ fi
 
 # Copy commands
 echo "Installing commands..."
-if ls "$SCRIPT_DIR/commands/"*.md &>/dev/null; then
-    cp "$SCRIPT_DIR/commands/"*.md "$CLAUDE_DIR/commands/"
-    mark_ok "Commands"
+if compgen -G "$SCRIPT_DIR/commands/*.md" >/dev/null; then
+    if cp "$SCRIPT_DIR/commands/"*.md "$CLAUDE_DIR/commands/" 2>/dev/null; then
+        mark_ok "Commands"
+    else
+        mark_failed "Commands" "copy failed" "check permissions on $CLAUDE_DIR/commands/"
+    fi
 else
     mark_skipped "Commands" "no .md files in commands/"
 fi
@@ -204,8 +267,12 @@ fi
 # Copy profiles
 echo "Installing profiles..."
 PROFILES_COPIED=0
-cp "$SCRIPT_DIR/profiles/"*.json "$CLAUDE_DIR/profiles/" 2>/dev/null && PROFILES_COPIED=1
-cp "$SCRIPT_DIR/profiles/"*.template "$CLAUDE_DIR/profiles/" 2>/dev/null && PROFILES_COPIED=1
+for profile in "$SCRIPT_DIR/profiles"/*.json "$SCRIPT_DIR/profiles"/*.template; do
+    [ -f "$profile" ] || continue
+    # A profile may hold an API key, so keep a copy before replacing it.
+    archive_backup "$CLAUDE_DIR/profiles/$(basename "$profile")"
+    cp "$profile" "$CLAUDE_DIR/profiles/" 2>/dev/null && PROFILES_COPIED=1
+done
 if [ "$PROFILES_COPIED" -eq 1 ]; then
     mark_ok "Profiles"
 else
@@ -214,10 +281,13 @@ fi
 
 # Copy scripts
 echo "Installing scripts..."
-if ls "$SCRIPT_DIR/scripts/"*.sh &>/dev/null; then
-    cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/"
-    chmod +x "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null || true
-    mark_ok "Scripts"
+if compgen -G "$SCRIPT_DIR/scripts/*.sh" >/dev/null; then
+    if cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/" 2>/dev/null; then
+        chmod +x "$CLAUDE_DIR/scripts/"*.sh 2>/dev/null || true
+        mark_ok "Scripts"
+    else
+        mark_failed "Scripts" "copy failed" "check permissions on $CLAUDE_DIR/scripts/"
+    fi
 else
     mark_skipped "Scripts" "no .sh files in scripts/"
 fi
@@ -238,6 +308,54 @@ if [ -d "$SCRIPT_DIR/skills" ]; then
         fi
     done
 fi
+# Report installed skills and commands that no longer exist in the repo. These are not removed
+# automatically: they may have been added directly or by another tool, and deleting a user's
+# config without asking is not this script's decision. A skill removed from the repo to resolve a
+# conflict stays live until it is deleted here, so the warning names the command to run.
+STALE_FOUND=0
+for installed in "$CLAUDE_DIR/skills"/*/; do
+    [ -d "$installed" ] || continue
+    name=$(basename "$installed")
+    if [ ! -d "$SCRIPT_DIR/skills/$name" ]; then
+        [ "$STALE_FOUND" -eq 0 ] && echo "" && echo "  Installed but not in this repo:"
+        STALE_FOUND=1
+        echo "    skill '$name'  ->  rm -rf $CLAUDE_DIR/skills/$name"
+    fi
+done
+for installed in "$CLAUDE_DIR/commands"/*.md; do
+    [ -f "$installed" ] || continue
+    name=$(basename "$installed")
+    if [ ! -f "$SCRIPT_DIR/commands/$name" ]; then
+        [ "$STALE_FOUND" -eq 0 ] && echo "" && echo "  Installed but not in this repo:"
+        STALE_FOUND=1
+        echo "    command '$name'  ->  rm $CLAUDE_DIR/commands/$name"
+    fi
+done
+# A hook file absent from the repo is only stale if nothing invokes it. One the user added and
+# registered themselves is live config, and recommending its deletion would break their setup.
+REGISTERED_HOOKS=""
+if command -v jq &>/dev/null && [ -f "$CLAUDE_DIR/settings.json" ]; then
+    REGISTERED_HOOKS="$(jq -r '(.hooks // {}) | to_entries[].value[]?.hooks[]?.command // empty' \
+                        "$CLAUDE_DIR/settings.json" 2>/dev/null || true)"
+fi
+for installed_dir in "$CLAUDE_DIR/hooks"/*/; do
+    [ -d "$installed_dir" ] || continue
+    event_name=$(basename "$installed_dir")
+    for installed in "$installed_dir"*; do
+        [ -f "$installed" ] || continue
+        name=$(basename "$installed")
+        [ -f "$SCRIPT_DIR/hooks/$event_name/$name" ] && continue
+        case "$REGISTERED_HOOKS" in *"$name"*) continue ;; esac
+        [ "$STALE_FOUND" -eq 0 ] && echo "" && echo "  Installed but not in this repo:"
+        STALE_FOUND=1
+        echo "    hook '$event_name/$name'  ->  rm $installed"
+    done
+done
+if [ "$STALE_FOUND" -eq 1 ]; then
+    echo "  Review these; a skill kept alongside its replacement can give conflicting instructions."
+    echo ""
+fi
+
 if [ "$SKILLS_COUNT" -gt 0 ]; then
     mark_ok "Skills ($SKILLS_COUNT installed)"
 else
@@ -245,7 +363,7 @@ else
 fi
 
 # Ensure npm global bin is on PATH
-NPM_GLOBAL_BIN="$(npm config get prefix 2>/dev/null)/bin"
+NPM_GLOBAL_BIN="$(npm config get prefix 2>/dev/null || true)/bin"
 if [ -n "$NPM_GLOBAL_BIN" ] && [[ ":$PATH:" != *":$NPM_GLOBAL_BIN:"* ]]; then
     export PATH="$NPM_GLOBAL_BIN:$PATH"
 fi
@@ -355,19 +473,27 @@ if command -v claude &> /dev/null; then
         mark_skipped "Plugin: codex-marketplace" "already added or unavailable"
     fi
 
+    INSTALLED_PLUGINS="$(claude plugin list 2>/dev/null || true)"
+
     echo "  Installing codex plugin..."
-    if claude plugin install "codex@openai-codex" 2>/dev/null; then
+    if printf '%s' "$INSTALLED_PLUGINS" | grep -q "codex"; then
+        mark_ok "Plugin: codex (already installed)"
+    elif claude plugin install "codex@openai-codex" 2>/dev/null; then
         mark_ok "Plugin: codex"
     else
-        mark_skipped "Plugin: codex" "already installed or unavailable"
+        mark_failed "Plugin: codex" "install failed (offline or unavailable)" \
+                    "check network, then: claude plugin install codex@openai-codex"
     fi
 
     for plugin in "${PLUGINS[@]}"; do
         echo "  Installing $plugin..."
-        if claude plugin install "$plugin" 2>/dev/null; then
+        if printf '%s' "$INSTALLED_PLUGINS" | grep -q "^\s*${plugin%%@*}\b"; then
+            mark_ok "Plugin: $plugin (already installed)"
+        elif claude plugin install "$plugin" 2>/dev/null; then
             mark_ok "Plugin: $plugin"
         else
-            mark_skipped "Plugin: $plugin" "already installed or unavailable"
+            mark_failed "Plugin: $plugin" "install failed (offline or unavailable)" \
+                        "check network, then: claude plugin install $plugin"
         fi
     done
 
@@ -506,6 +632,6 @@ echo "  claude-profiles - List all profiles"
 echo ""
 echo "Available slash commands:"
 echo "  /scan          - Generate project CLAUDE.md"
-echo "  /plan          - Create implementation plans"
 echo "  /prime         - Load project context"
+echo "  /create-spec   - Interview, then write a technical specification"
 echo ""
