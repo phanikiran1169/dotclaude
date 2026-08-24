@@ -57,41 +57,47 @@ const SENSITIVE_FILES = [
 // Bash patterns that expose or exfiltrate secrets
 const BASH_PATTERNS = [
   // CRITICAL
-  { level: 'critical', id: 'cat-env',            regex: /\b(cat|less|head|tail|more|bat|view)\s+[^|;]*\.env\b/i,           reason: 'Reading .env file exposes secrets' },
-  { level: 'critical', id: 'cat-ssh-key',        regex: /\b(cat|less|head|tail|more|bat)\s+[^|;]*(id_rsa|id_ed25519|id_ecdsa|id_dsa|\.pem|\.key)\b/i, reason: 'Reading private key' },
+  { level: 'critical', id: 'cat-env',            regex: /\b(cat|less|head|tail|more|bat|view)\s+[^|;]*?(?!\S*\.(?:example|sample|template|dist|schema)\b)\S*\.env\b/i,           reason: 'Reading .env file exposes secrets' },
+  { level: 'critical', id: 'cat-ssh-key',        regex: /\b(?:cat|less|head|tail|more|bat)\s+[^|;]*(?:id_rsa|id_ed25519|id_ecdsa|id_dsa|\.pem\b|(?:\.ssh|keys?|secrets?|private|certs?)\/\S*\.key\b|\bprivate\S*\.key\b)/i, reason: 'Reading private key' },
   { level: 'critical', id: 'cat-aws-creds',      regex: /\b(cat|less|head|tail|more)\s+[^|;]*\.aws\/credentials/i,         reason: 'Reading AWS credentials' },
 
   // HIGH - Environment exposure
-  { level: 'high', id: 'env-dump',               regex: /\bprintenv\b|(?:^|[;&|]\s*)env\s*(?:$|[;&|])/,                    reason: 'Environment dump may expose secrets' },
-  { level: 'high', id: 'echo-secret-var',        regex: /\becho\b[^;|&]*\$\{?[A-Za-z_]*(?:SECRET|KEY|TOKEN|PASSWORD|PASSW|CREDENTIAL|API_KEY|AUTH|PRIVATE)[A-Za-z_]*\}?/i, reason: 'Echoing secret variable' },
-  { level: 'high', id: 'printf-secret-var',      regex: /\bprintf\b[^;|&]*\$\{?[A-Za-z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY|AUTH|PRIVATE)[A-Za-z_]*\}?/i, reason: 'Printing secret variable' },
+  // A bare dump of the whole environment. Naming a variable (`printenv PATH`,
+  // `env | grep ROS_DOMAIN_ID`) reveals only that variable and stays allowed.
+  { level: 'high', id: 'env-dump',               regex: /(?:^|[;&|]\s*)(?:printenv|env)\s*(?:$|[;&]|#)/,                     reason: 'Full environment dump may expose secrets' },
+  { level: 'high', id: 'echo-secret-var',        regex: /\becho\b[^;|&]*\$\{?[A-Za-z_]*(?:^|_)?(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|API_?KEY|ACCESS_KEY|SECRET_KEY|PRIVATE_KEY|AUTH_TOKEN)(?:_[A-Za-z_]*)?\}?(?![A-Za-z])/, reason: 'Echoing secret variable' },
+  { level: 'high', id: 'printf-secret-var',      regex: /\bprintf\b[^;|&]*\$\{?[A-Za-z_]*(?:^|_)?(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|API_?KEY|ACCESS_KEY|SECRET_KEY|PRIVATE_KEY|AUTH_TOKEN)(?:_[A-Za-z_]*)?\}?(?![A-Za-z])/, reason: 'Printing secret variable' },
   { level: 'high', id: 'cat-secrets-file',       regex: /\b(cat|less|head|tail|more)\s+[^|;]*(credentials?|secrets?)\.(json|ya?ml|toml)/i, reason: 'Reading secrets file' },
   { level: 'high', id: 'cat-netrc',              regex: /\b(cat|less|head|tail|more)\s+[^|;]*\.netrc/i,                    reason: 'Reading .netrc credentials' },
-  { level: 'high', id: 'source-env',             regex: /\bsource\s+[^|;]*\.env\b|(?:^|[;&|]\s*)\.\s+[^|;]*\.env\b|^\.\s+[^|;]*\.env\b/i, reason: 'Sourcing .env loads secrets' },
+  { level: 'high', id: 'source-env',             regex: /\b(?:source|\.)\s+(?!\S*\.(?:example|sample|template|dist|schema)\b)\S*\.env\b/i, reason: 'Sourcing .env loads secrets' },
   { level: 'high', id: 'export-cat-env',         regex: /export\s+.*\$\(cat\s+[^)]*\.env/i,                                reason: 'Exporting secrets from .env' },
 
   // HIGH - Exfiltration
   { level: 'high', id: 'curl-upload-env',        regex: /\bcurl\b[^;|&]*(-d\s*@|-F\s*[^=]+=@|--data[^=]*=@)[^;|&]*(\.env|credentials|secrets|id_rsa|\.pem|\.key)/i, reason: 'Uploading secrets via curl' },
   { level: 'high', id: 'curl-post-secrets',      regex: /\bcurl\b[^;|&]*-X\s*POST[^;|&]*[^;|&]*(\.env|credentials|secrets)/i, reason: 'POSTing secrets via curl' },
-  { level: 'high', id: 'curl-creds-url',         regex: /\bcurl\b.*(?:api_key|password|secret)=/i,                          reason: 'Credentials in URL parameters' },
+  // A literal secret in a URL leaks into shell history and server logs. Passing a variable is the
+  // correct pattern and is exempt.
+  { level: 'high', id: 'curl-creds-url',         regex: /\bcurl\b.*(?:api_key|apikey|password|secret|token)=(?!\$|%24)[^\s&"']/i, reason: 'Literal credential in a URL — pass it in a variable or header' },
   { level: 'high', id: 'wget-post-secrets',      regex: /\bwget\b[^;|&]*--post-file[^;|&]*(\.env|credentials|secrets)/i,  reason: 'POSTing secrets via wget' },
   { level: 'high', id: 'scp-secrets',            regex: /\bscp\b[^;|&]*(\.env|credentials|secrets|id_rsa|\.pem|\.key)[^;|&]+:/i, reason: 'Copying secrets via scp' },
   { level: 'high', id: 'rsync-secrets',          regex: /\brsync\b[^;|&]*(\.env|credentials|secrets|id_rsa)[^;|&]+:/i,    reason: 'Syncing secrets via rsync' },
   { level: 'high', id: 'nc-secrets',             regex: /\bnc\b[^;|&]*<[^;|&]*(\.env|credentials|secrets|id_rsa)/i,       reason: 'Exfiltrating secrets via netcat' },
 
   // HIGH - Copy/move/delete secrets
-  { level: 'high', id: 'cp-env',                 regex: /\bcp\b[^;|&]*\.env\b/i,                                           reason: 'Copying .env file' },
-  { level: 'high', id: 'cp-ssh-key',             regex: /\bcp\b[^;|&]*(id_rsa|id_ed25519|\.pem|\.key)\b/i,                 reason: 'Copying private key' },
+  // Copying a populated .env spreads the secret. Copying the template that ships in the repo
+  // (`cp .env.example .env`) is the normal way to start, and carries no secret.
+  { level: 'high', id: 'cp-env',                 regex: /\bcp\s+(?:-\S+\s+)*(?!\S*\.(?:example|sample|template|dist)\b)\S*\.env\b/i, reason: 'Copying a populated .env file' },
+  { level: 'high', id: 'cp-ssh-key',             regex: /\bcp\b[^;|&]*(?:id_rsa|id_ed25519|\.pem\b|(?:\.ssh|keys?|secrets?|private|certs?)\/\S*\.key\b)/i,                 reason: 'Copying private key' },
   { level: 'high', id: 'mv-env',                 regex: /\bmv\b[^;|&]*\.env\b/i,                                           reason: 'Moving .env file' },
   { level: 'high', id: 'rm-ssh-key',             regex: /\brm\b[^;|&]*(id_rsa|id_ed25519|id_ecdsa|authorized_keys)/i,     reason: 'Deleting SSH key' },
-  { level: 'high', id: 'rm-env',                 regex: /\brm\b.*\.env\b/i,                                                 reason: 'Deleting .env file' },
+  { level: 'high', id: 'rm-env',                 regex: /\brm\b[^;|&]*(?<!\.bak)(?<!\.example)(?<!\.sample)(?<!\.template)\.env\b/i,                                                 reason: 'Deleting .env file' },
   { level: 'high', id: 'rm-aws-creds',           regex: /\brm\b[^;|&]*\.aws\/credentials/i,                                reason: 'Deleting AWS credentials' },
   { level: 'high', id: 'truncate-secrets',       regex: /\btruncate\b.*\.(env|pem|key)\b|(?:^|[;&|]\s*)>\s*\.env\b/i,      reason: 'Truncating secrets file' },
 
   // HIGH - Process environ
   { level: 'high', id: 'proc-environ',           regex: /\/proc\/[^/]*\/environ/,                                          reason: 'Reading process environment' },
-  { level: 'high', id: 'xargs-cat-env',          regex: /xargs.*cat|\.env.*xargs/i,                                         reason: 'Reading .env via xargs' },
-  { level: 'high', id: 'find-exec-cat-env',      regex: /find\b.*\.env.*-exec|find\b.*-exec.*(cat|less)/i,                 reason: 'Finding and reading .env files' },
+  { level: 'high', id: 'xargs-cat-env',          regex: /\bxargs\b[^;|&]*\bcat\b[^;|&]*\.env\b|\.env\b[^;|&]*\|\s*xargs\b[^;|&]*\bcat\b/i,                                         reason: 'Reading .env via xargs' },
+  { level: 'high', id: 'find-exec-cat-env',      regex: /\bfind\b[^;|&]*(?:\.env\b[^;|&]*-exec|-exec\s+(?:cat|less|more|head|tail)\b[^;|&]*\.env\b)/i,                 reason: 'Finding and reading .env files' },
 
   // STRICT
   { level: 'strict', id: 'grep-password',        regex: /\bgrep\b[^|;]*(-r|--recursive)[^|;]*(password|secret|api.?key|token|credential)/i, reason: 'Grep for secrets may expose them' },
@@ -132,9 +138,10 @@ function checkFilePath(filePath, safetyLevel = SAFETY_LEVEL) {
 
 function checkBashCommand(cmd, safetyLevel = SAFETY_LEVEL) {
   if (!cmd) return { blocked: false, pattern: null };
-  for (const allow of ALLOWLIST) {
-    if (allow.test(cmd)) return { blocked: false, pattern: null };
-  }
+  // The allowlist describes a path, not a command. Testing it against the whole command line let
+  // any command exempt itself by ending in an allowlisted name, including in a trailing comment:
+  // `cat .env # env.example` matched and skipped all of the patterns below. Path exemption belongs
+  // in checkFilePath, and the individual patterns exclude template names themselves.
   const threshold = LEVELS[safetyLevel] || 2;
   for (const p of BASH_PATTERNS) {
     if (LEVELS[p.level] <= threshold && p.regex.test(cmd)) {

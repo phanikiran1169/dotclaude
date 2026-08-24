@@ -35,6 +35,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/post_tool_use/eval-provenance.js"
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
