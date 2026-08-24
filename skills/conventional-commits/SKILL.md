@@ -68,10 +68,27 @@ here as for a PR body, with the reasoning in the pull-request skill. In short: i
 feature X" and it needed debugging Y along the way, the subject is X, and `git show` already lists
 the files.
 
-- **No conversation context.** No "as discussed", no "per your request", no account of how the
-  change came about, no metrics borrowed from unrelated work.
+- **No conversation context.** No "as discussed", no "per your request", no metrics borrowed from
+  unrelated work.
 - **No vague descriptions.** Not "update code", "fix stuff", "misc changes".
-- Length follows the change. One line if that covers it. What to cut is context, not lines.
+
+## Length
+
+There is no line limit. Test each line instead: it must name something the change does, or
+something a reader will run into.
+
+Cut any line that explains how you found the problem, what you tried first, what a log or a diff
+showed you, or why the old code was wrong. Those are true and they are not the reader's problem.
+
+| Keep | Cut |
+|---|---|
+| What it does, one line per part | How you found it |
+| Behavior a caller will notice | What you tried first |
+| Migration steps for a breaking change | What the log showed |
+| A constraint that survived, and why it holds | Why the old code was wrong |
+
+A large change earns a long message when its parts are genuinely separate. It never earns a
+narrative. One line is right far more often than it feels.
 
 ## Examples
 

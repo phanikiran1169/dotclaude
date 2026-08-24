@@ -33,7 +33,8 @@ free-to-read facts. Describing them spends the reader's attention on something t
 
 Title: `<type>(<scope>): <imperative description>`, lowercase, no trailing period.
 
-Body: as short as the change allows.
+Body: every line names something the change does, or something a reviewer will run into. Cut any
+line about how the work went. No line limit; that test applies at any length.
 
 | Include | When |
 |---|---|

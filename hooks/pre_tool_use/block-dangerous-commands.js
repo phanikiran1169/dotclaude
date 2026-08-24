@@ -20,25 +20,43 @@ const SAFE_TARGET = new RegExp(String.raw`^(?:(?:\/|\.\/)?(?:[^\s;&|]*\/)?(?:${R
 // non-disposable argument means the whole command still gets blocked. A `..` anywhere in a target
 // disqualifies it, because `build/../outputs` matches the regenerable prefix while deleting
 // something else.
-function rmTargetsAllSafe(cmd) {
-  const invocations = cmd.split(/[;&|]+|\n/).filter((s) => /(^|\s)(sudo\s+)?rm(\s|$)/.test(s));
+// Scratch roots. A relative target is scratch when the shell is already inside one, which is how
+// `cd /tmp && rm -rf worktree` reads even though the path alone looks like a project directory.
+const SCRATCH_ROOT = /^(?:\/tmp|\/var\/tmp|\/private\/tmp)(?:\/|$)/;
+
+// The directory a command runs in: the last `cd` in the command if there is one, else the session's
+// cwd as reported by the hook input.
+function effectiveCwd(cmd, cwd) {
+  const cds = [...cmd.matchAll(/\bcd\s+([^\s;&|]+)/g)];
+  if (cds.length === 0) return cwd || '';
+  const target = cds[cds.length - 1][1].replace(/['"]/g, '');
+  return target.startsWith('/') ? target : `${cwd || ''}/${target}`;
+}
+
+function rmTargetsAllSafe(cmd, cwd) {
+  const invocations = cmd.split(/[;&|]+|\n/).filter((s) => /(^|\s)(sudo\s+)?(?:rm|rmdir|unlink|shred)(\s|$)/.test(s));
   if (invocations.length === 0) return false;
+  const inScratch = SCRATCH_ROOT.test(effectiveCwd(cmd, cwd));
   return invocations.every((seg) => {
     const toks = seg.trim().split(/\s+/);
-    const i = toks.findIndex((t) => t === 'rm' || t.endsWith('/rm'));
+    const i = toks.findIndex((t) => /^(?:rm|rmdir|unlink|shred)$/.test(t) || /\/(?:rm|rmdir|unlink|shred)$/.test(t));
     if (i === -1) return false;
     const args = toks.slice(i + 1).filter((t) => !t.startsWith('-'));
     if (args.length === 0) return false;
     return args.every((a) => {
       const target = a.replace(/['"]/g, '');
       if (target.split('/').includes('..')) return false;
+      // `rm -rf .` and `rm -rf *` stay refused even in scratch: they wipe whatever is there.
+      if (/^(?:\.\.?|\*|\.\/\*?)$/.test(target)) return false;
+      if (/^(?:~|\$HOME|\$\{HOME\})/.test(target)) return false;
+      if (inScratch && !target.startsWith('/')) return true;
       return SAFE_TARGET.test(target);
     });
   });
 }
 
 // Rules suppressed when every rm target is regenerable.
-const RM_RULES = new Set(['rm-recursive', 'rm-chained', 'rm-glob', 'rm-file']);
+const RM_RULES = new Set(['rm-recursive', 'rm-chained', 'rm-glob', 'rm-file', 'rmdir-unlink']);
 
 // Rules that must always see the raw command, because their evidence is the quoted text itself:
 // an inline script body or a sed expression is data to the shell but is exactly what these match.
@@ -66,7 +84,7 @@ const PATTERNS = [
 
   // HIGH - Significant risk, data loss, security
   { level: 'high', id: 'rm-recursive',   regex: /\brm\s+(-\S*\s+)*-\S*[rR]\S*\s/,                                          reason: 'recursive rm — ask before deleting a directory, including your own' },
-  { level: 'high', id: 'rm-chained',     regex: /[;&|]{1,2}\s*(sudo\s+)?rm\s/,                                             reason: 'rm chained onto another command — run deletions on their own so they can be refused' },
+  { level: 'high', id: 'rm-chained',     regex: /[;&|]{1,2}\s*(?:sudo\s+)?rm\s+(?:-\S*[rR]\S*\s+|-\S+\s+)*(?:[^\s;&|]*[*?]|[^\s;&|]+\/\s*)(?:\s|$|[;&|])/,                                             reason: 'rm chained onto another command — run deletions on their own so they can be refused' },
   { level: 'high', id: 'rm-glob',        regex: /\brm\s+(-\S+\s+)*[^|;&]*\*/,                                              reason: 'rm with a glob — enumerate the matches first' },
   { level: 'high', id: 'mv-overwrite',   regex: /\bmv\s+(-\S*f\S*\s+)/,                                                    reason: 'mv -f overwrites the destination' },
   // Only hand-written source. Generating data, configs or model artifacts by redirect
@@ -192,10 +210,10 @@ function disabledRules(safetyLevel = SAFETY_LEVEL) {
   return PATTERNS.filter((p) => LEVELS[p.level] > threshold).map((p) => p.id);
 }
 
-function checkCommand(cmd, safetyLevel = SAFETY_LEVEL) {
+function checkCommand(cmd, safetyLevel = SAFETY_LEVEL, cwd = '') {
   const threshold = LEVELS[safetyLevel] || 2;
   const masked = maskQuoted(cmd);
-  const rmSafe = rmTargetsAllSafe(masked);
+  const rmSafe = rmTargetsAllSafe(masked, cwd);
   for (const p of PATTERNS) {
     if (rmSafe && RM_RULES.has(p.id)) continue;
     const subject = RAW_RULES.has(p.id) ? cmd : masked;
@@ -216,7 +234,7 @@ async function main() {
     if (tool_name !== 'Bash') return console.log('{}');
 
     const cmd = tool_input?.command || '';
-    const result = checkCommand(cmd);
+    const result = checkCommand(cmd, SAFETY_LEVEL, cwd);
 
     const off = disabledRules();
     if (off.length) log({ level: 'DEGRADED', safety_level: SAFETY_LEVEL, disabled: off, session_id });
@@ -242,5 +260,5 @@ async function main() {
 if (require.main === module) {
   main();
 } else {
-  module.exports = { PATTERNS, LEVELS, SAFETY_LEVEL, checkCommand, disabledRules, rmTargetsAllSafe };
+  module.exports = { PATTERNS, LEVELS, SAFETY_LEVEL, checkCommand, disabledRules, rmTargetsAllSafe, effectiveCwd };
 }

@@ -39,7 +39,16 @@ const RUN_SHAPED = new RegExp(
 
 // Test runners, linters and package managers produce numbers, or name a package with "eval" in it,
 // but none of them is an experiment.
-const NOT_AN_EXPERIMENT = /^\s*(?:pytest|ruff|flake8|mypy|black|isort|npm\s+test|cargo\s+test|go\s+test|tox|nox)\b|\b(?:pip|pip3|uv|conda|poetry|npm|yarn|pnpm)\s+(?:install|add|remove|uninstall|sync)\b/i;
+const NOT_AN_EXPERIMENT = new RegExp([
+  // Test runners and linters produce numbers but measure code, not a system.
+  String.raw`^\s*(?:pytest|ruff|flake8|mypy|black|isort|npm\s+test|cargo\s+test|go\s+test|tox|nox)\b`,
+  // Package managers name packages with "eval" in them.
+  String.raw`\b(?:pip|pip3|uv|conda|poetry|npm|yarn|pnpm)\s+(?:install|add|remove|uninstall|sync)\b`,
+  // A shell loop over files, or running a test script, is not an experiment.
+  String.raw`^\s*for\s+\w+\s+in\b`,
+  String.raw`\btest-[\w.-]+\.(?:js|py|sh)\b`,
+  String.raw`\b(?:test|tests)\/`,
+].join('|'), 'i');
 
 const LOG_DIR = path.join(process.env.HOME, '.claude', 'hooks-logs');
 
