@@ -12,6 +12,8 @@ const SHOULD_BLOCK = [
   // Folded into an unrelated command, so the delete is easy to miss.
   'ruff check . && rm -rf outputs',
   'pytest -q ; rm -rf runs',
+  // A trailing slash without -r reaches rm-chained, which every other chained case shadows.
+  'ruff check . && rm outputs/',
   // Globs and single files: one checkpoint or results file is a real loss.
   'rm outputs/*.json',
   'rm -f checkpoints/best.ckpt',
