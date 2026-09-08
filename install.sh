@@ -394,6 +394,50 @@ else
     fi
 fi
 
+# Install Antigravity CLI (`agy`) — not on npm, installs to ~/.local/bin
+echo ""
+AGY_BIN="$HOME/.local/bin/agy"
+if command -v agy &> /dev/null; then
+    echo "Antigravity CLI already installed ($(agy --version 2>/dev/null || echo 'unknown'))"
+    mark_ok "Antigravity CLI (already installed)"
+elif [ -x "$AGY_BIN" ]; then
+    echo "Antigravity CLI found at $AGY_BIN but not on PATH"
+    export PATH="$HOME/.local/bin:$PATH"
+    mark_ok "Antigravity CLI (found at $AGY_BIN)"
+elif ! command -v curl &> /dev/null; then
+    mark_failed "Antigravity CLI" "curl not installed" "install curl, then: curl -fsSL https://antigravity.google/cli/install.sh | bash"
+else
+    echo "Installing Antigravity CLI..."
+    # install.sh: separate steps, and PIPESTATUS below — no `pipefail` here, so a
+    # failed download piped into `tail` would report success.
+    AGY_SCRIPT="$(mktemp -t agy-install)"
+    if ! curl -fsSL https://antigravity.google/cli/install.sh -o "$AGY_SCRIPT"; then
+        rm -f "$AGY_SCRIPT"
+        mark_failed "Antigravity CLI" "could not download installer (network)" "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+    elif bash "$AGY_SCRIPT" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" -ne 0 ]; then
+        rm -f "$AGY_SCRIPT"
+        mark_failed "Antigravity CLI" "installer failed (unsupported platform or checksum mismatch)" "bash -x <(curl -fsSL https://antigravity.google/cli/install.sh)"
+    else
+        rm -f "$AGY_SCRIPT"
+        export PATH="$HOME/.local/bin:$PATH"
+        if command -v agy &> /dev/null; then
+            mark_ok "Antigravity CLI"
+        else
+            mark_failed "Antigravity CLI" "installed but not on PATH" "export PATH=\"\$HOME/.local/bin:\$PATH\" and restart terminal"
+        fi
+    fi
+fi
+
+# Persist ~/.local/bin in shell config if missing
+if [ -d "$HOME/.local/bin" ] && [ -n "$SHELL_CONFIG" ]; then
+    if ! grep -qF '.local/bin' "$SHELL_CONFIG" 2>/dev/null; then
+        echo "" >> "$SHELL_CONFIG"
+        echo "# ~/.local/bin (added by Claude Code installer — Antigravity CLI)" >> "$SHELL_CONFIG"
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
+        echo "  Added \$HOME/.local/bin to $SHELL_CONFIG"
+    fi
+fi
+
 # Persist npm global bin in shell config if missing
 if [ -n "$NPM_GLOBAL_BIN" ] && [ -d "$NPM_GLOBAL_BIN" ]; then
     PATH_EXPORT="export PATH=\"$NPM_GLOBAL_BIN:\$PATH\""
@@ -485,6 +529,25 @@ if command -v claude &> /dev/null; then
                     "check network, then: claude plugin install codex@openai-codex"
     fi
 
+    # Antigravity marketplace and plugin
+    echo "  Adding Antigravity marketplace..."
+    if claude plugin marketplace add simplybychris/antigravity-plugin-cc 2>/dev/null; then
+        mark_ok "Plugin: antigravity-marketplace"
+    else
+        mark_skipped "Plugin: antigravity-marketplace" "already added or unavailable"
+    fi
+
+    echo "  Installing agy plugin..."
+    # install.sh: anchored — a bare `grep -q agy` matches `strategy` too
+    if printf '%s' "$INSTALLED_PLUGINS" | grep -qE "(^|[[:space:]/@])agy([[:space:]@]|$)"; then
+        mark_ok "Plugin: agy (already installed)"
+    elif claude plugin install "agy@antigravity-cc" 2>/dev/null; then
+        mark_ok "Plugin: agy"
+    else
+        mark_failed "Plugin: agy" "install failed (offline or unavailable)" \
+                    "check network, then: claude plugin install agy@antigravity-cc"
+    fi
+
     for plugin in "${PLUGINS[@]}"; do
         echo "  Installing $plugin..."
         if printf '%s' "$INSTALLED_PLUGINS" | grep -q "^\s*${plugin%%@*}\b"; then
@@ -540,6 +603,8 @@ else
     echo "  Install plugins manually after installing Claude CLI:"
     echo "    claude plugin marketplace add openai/codex-plugin-cc"
     echo "    claude plugin install codex@openai-codex"
+    echo "    claude plugin marketplace add simplybychris/antigravity-plugin-cc"
+    echo "    claude plugin install agy@antigravity-cc"
     for plugin in "${PLUGINS[@]}"; do
         echo "    claude plugin install $plugin"
     done

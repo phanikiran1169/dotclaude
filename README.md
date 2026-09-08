@@ -75,12 +75,26 @@ superpowers         # Extended capabilities and workflows
 claude-md-management # CLAUDE.md tooling
 skill-creator       # Scaffolding for new skills
 codex               # Codex CLI integration (from the openai-codex marketplace)
+agy                 # Antigravity CLI integration (from the antigravity-cc marketplace)
 ```
 
 These are installed unconditionally and need network access. Offline they fail without stopping the
 install.
 
-To modify the plugin list, edit the `PLUGINS` array in `install.sh`.
+To modify the plugin list, edit the `PLUGINS` array in `install.sh`. `codex` and `agy` are installed
+separately, because each needs its own marketplace added first.
+
+### Second-opinion CLIs
+
+| CLI | Auth (one-time, interactive) | Commands |
+|-----|------------------------------|----------|
+| `codex` | `codex login` | `/codex:rescue`, `/codex:review`, `/codex:setup` |
+| `agy` | run `agy` once | `/agy:ask`, `/agy:delegate`, `/agy:research`, `/agy:review`, `/agy:setup` |
+
+`agy` model: run `agy`, then `/model`. Stored as a display name in
+`~/.gemini/antigravity-cli/settings.json`; `agy models` lists what the account can reach.
+
+The hooks in `hooks/pre_tool_use/` see only Claude's own Bash calls, not either CLI's edits.
 
 ### Academic writing setup (opt-in)
 
