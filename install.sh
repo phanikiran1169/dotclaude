@@ -433,8 +433,10 @@ else
 fi
 
 # Persist ~/.local/bin in shell config if missing
+# install.sh: skips commented-out lines — zsh ships a commented PATH example
+# mentioning .local/bin, and matching it would leave the directory off PATH.
 if [ -d "$HOME/.local/bin" ] && [ -n "$SHELL_CONFIG" ]; then
-    if ! grep -qF '.local/bin' "$SHELL_CONFIG" 2>/dev/null; then
+    if ! grep -qE '^[^#]*(export[[:space:]]+)?PATH=.*\.local/bin' "$SHELL_CONFIG" 2>/dev/null; then
         echo "" >> "$SHELL_CONFIG"
         echo "# ~/.local/bin (added by Claude Code installer — Antigravity CLI)" >> "$SHELL_CONFIG"
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
