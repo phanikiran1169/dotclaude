@@ -410,8 +410,12 @@ else
     echo "Installing Antigravity CLI..."
     # install.sh: separate steps, and PIPESTATUS below — no `pipefail` here, so a
     # failed download piped into `tail` would report success.
-    AGY_SCRIPT="$(mktemp -t agy-install)"
-    if ! curl -fsSL https://antigravity.google/cli/install.sh -o "$AGY_SCRIPT"; then
+    # The XXXXXX suffix is required by GNU mktemp; BSD accepts it too. Guarded
+    # because a bare assignment failing under `set -e` would abort the whole
+    # install, skipping the plugin steps below.
+    if ! AGY_SCRIPT="$(mktemp -t agy-install.XXXXXX)"; then
+        mark_failed "Antigravity CLI" "could not create a temp file" "check TMPDIR is writable, then re-run"
+    elif ! curl -fsSL https://antigravity.google/cli/install.sh -o "$AGY_SCRIPT"; then
         rm -f "$AGY_SCRIPT"
         mark_failed "Antigravity CLI" "could not download installer (network)" "curl -fsSL https://antigravity.google/cli/install.sh | bash"
     elif bash "$AGY_SCRIPT" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" -ne 0 ]; then
