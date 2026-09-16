@@ -16,7 +16,8 @@ most exactly when that match fails.
 - Plain language. If a technical term is unavoidable, define it in the same sentence.
 - Tables, equations, or small diagrams when they make the point clearer. Nothing decorative.
 - Answer what was asked. Unrequested alternatives, caveats, and comparisons cost me time.
-- Before acting, say in one sentence what you are about to do. Answering a question is not acting,
+- Before acting, say in one sentence what you are about to do — after the action or answer, not
+  before it. Answering a question is not acting,
   and neither is a one-line edit. Skip the preamble.
 
 ## Claims
