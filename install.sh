@@ -554,6 +554,35 @@ if command -v claude &> /dev/null; then
                     "check network, then: claude plugin install agy@antigravity-cc"
     fi
 
+    # i-have-adhd marketplace and plugin
+    echo "  Adding i-have-adhd marketplace..."
+    if claude plugin marketplace add ayghri/i-have-adhd 2>/dev/null; then
+        mark_ok "Plugin: i-have-adhd-marketplace"
+    else
+        mark_skipped "Plugin: i-have-adhd-marketplace" "already added or unavailable"
+    fi
+
+    echo "  Installing i-have-adhd plugin..."
+    if printf '%s' "$INSTALLED_PLUGINS" | grep -q "i-have-adhd"; then
+        mark_ok "Plugin: i-have-adhd (already installed)"
+    elif claude plugin install "i-have-adhd@i-have-adhd" 2>/dev/null; then
+        mark_ok "Plugin: i-have-adhd"
+    else
+        mark_failed "Plugin: i-have-adhd" "install failed (offline or unavailable)" \
+                    "check network, then: claude plugin install i-have-adhd@i-have-adhd"
+    fi
+
+    # The plugin's SessionStart hook stays dormant unless this flag file exists.
+    ADHD_FLAG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.i-have-adhd-always"
+    if [ -e "$ADHD_FLAG" ]; then
+        mark_ok "i-have-adhd always-on (already enabled)"
+    elif touch "$ADHD_FLAG" 2>/dev/null; then
+        mark_ok "i-have-adhd always-on"
+    else
+        mark_failed "i-have-adhd always-on" "could not create $ADHD_FLAG" \
+                    "create it by hand: touch $ADHD_FLAG"
+    fi
+
     for plugin in "${PLUGINS[@]}"; do
         echo "  Installing $plugin..."
         if printf '%s' "$INSTALLED_PLUGINS" | grep -q "^\s*${plugin%%@*}\b"; then
