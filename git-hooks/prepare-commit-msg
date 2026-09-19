@@ -1,0 +1,4 @@
+#!/bin/sh
+# Also wired as commit-msg. This one still runs under --no-verify; that one sees
+# text appended after message preparation. Between them nothing slips through.
+exec "$(dirname "$0")/strip-ai-attribution.sh" "$1"

@@ -252,6 +252,41 @@ else
     mark_failed "Statusline script" "source file not found" "ensure statusline-script.sh exists in the repo root"
 fi
 
+# Install git hooks that strip AI attribution from commit messages.
+#
+# settings.json turns attribution off at the source, but that setting has been
+# reported as intermittently ignored, so these hooks are the backstop: they act
+# on the commit message itself and so cover commits from any client, not just
+# Claude Code. Both hook names run the same filter because --no-verify skips
+# commit-msg while still running prepare-commit-msg.
+echo "Installing git attribution hooks..."
+GIT_HOOKS_DIR="$HOME/.config/git/hooks"
+if [ -d "$SCRIPT_DIR/git-hooks" ] && compgen -G "$SCRIPT_DIR/git-hooks/*" >/dev/null; then
+    mkdir -p "$GIT_HOOKS_DIR"
+    for git_hook in "$SCRIPT_DIR/git-hooks"/*; do
+        [ -f "$git_hook" ] || continue
+        archive_backup "$GIT_HOOKS_DIR/$(basename "$git_hook")"
+        cp "$git_hook" "$GIT_HOOKS_DIR/"
+        chmod +x "$GIT_HOOKS_DIR/$(basename "$git_hook")"
+    done
+    mark_ok "Git attribution hooks"
+
+    # core.hooksPath replaces .git/hooks rather than adding to it, so claiming it
+    # would silently stop husky and friends from running. Only take it if free.
+    EXISTING_HOOKS_PATH=$(git config --global --get core.hooksPath 2>/dev/null || true)
+    if [ -z "$EXISTING_HOOKS_PATH" ]; then
+        git config --global core.hooksPath "$GIT_HOOKS_DIR"
+        mark_ok "core.hooksPath -> $GIT_HOOKS_DIR"
+    elif [ "$EXISTING_HOOKS_PATH" = "$GIT_HOOKS_DIR" ]; then
+        mark_ok "core.hooksPath (already set)"
+    else
+        mark_skipped "core.hooksPath" \
+            "already set to $EXISTING_HOOKS_PATH; hooks copied but inactive. To activate, chain them from that directory or run: git config --global core.hooksPath $GIT_HOOKS_DIR"
+    fi
+else
+    mark_skipped "Git attribution hooks" "no files in git-hooks/"
+fi
+
 # Copy commands
 echo "Installing commands..."
 if compgen -G "$SCRIPT_DIR/commands/*.md" >/dev/null; then
